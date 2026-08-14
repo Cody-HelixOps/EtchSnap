@@ -28,17 +28,6 @@
   color: #b8beca;
 }
 
-.privacy-note {
-  max-width: 52rem;
-  margin: 0.85rem 0 0;
-  padding: 0.75rem 0.9rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(129, 140, 248, 0.35);
-  background: rgba(99, 102, 241, 0.1);
-  color: #c7d2fe;
-  font-size: 0.92rem;
-}
-
 .layout {
   display: grid;
   gap: 1.25rem;
@@ -132,13 +121,24 @@
   font-weight: 600;
 }
 
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.enhance-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .field small {
   color: #9aa3b2;
 }
 
 .field input,
-.field textarea,
-.provider-select {
+.field textarea {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 0.75rem;
@@ -148,7 +148,89 @@
 }
 
 .provider-select {
+  position: relative;
+}
+
+.provider-select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: #eef2ff;
+  padding: 0.8rem 0.9rem;
   cursor: pointer;
+  text-align: left;
+}
+
+.provider-select-trigger:hover,
+.provider-select-option:hover {
+  border-color: rgba(129, 140, 248, 0.55);
+}
+
+.provider-select-chevron {
+  color: #a5b4fc;
+  font-size: 0.95rem;
+}
+
+.provider-select-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border: 1px solid rgba(129, 140, 248, 0.45);
+  border-radius: 0.75rem;
+  background: #151924;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.provider-select-option {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #e8eaef;
+  padding: 0.7rem 0.75rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.provider-select-option.active {
+  border-color: rgba(129, 140, 248, 0.8);
+  background: rgba(99, 102, 241, 0.22);
+  color: #ffffff;
+}
+
+.provider-select.is-disabled .provider-select-trigger {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.model-select-menu {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.model-option-label {
+  display: block;
+}
+
+.model-option-id {
+  display: block;
+  margin-top: 0.15rem;
+  color: #9aa3b2;
+  font-size: 0.82rem;
+}
+
+.provider-select-option.active .model-option-id {
+  color: #dbeafe;
 }
 
 .field textarea {

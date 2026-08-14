@@ -2,8 +2,6 @@ import type { GenerateRequest } from '../types'
 import { base64ToDataUrl, loadImageFromDataUrl, postProcessDesign } from './imageUtils'
 import { buildPrompt } from './prompt'
 
-const OPENAI_IMAGE_MODEL = 'gpt-image-1'
-
 interface OpenAiErrorResponse {
   error?: {
     message?: string
@@ -36,7 +34,7 @@ export async function generateDesignWithOpenAI(
   const imageBlob = new Blob([bytes], { type: request.mimeType })
 
   const form = new FormData()
-  form.append('model', OPENAI_IMAGE_MODEL)
+  form.append('model', request.imageModel)
   form.append('image', imageBlob, 'surface-region.png')
   form.append('prompt', buildPrompt(request.description, request.mode))
   form.append('background', 'transparent')

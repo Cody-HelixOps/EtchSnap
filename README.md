@@ -39,6 +39,14 @@ npm run build
 npm run preview
 ```
 
+## GitHub Pages
+
+This app deploys automatically from `main` via GitHub Actions. The workflow builds the Vite app and publishes the `dist` folder to GitHub Pages.
+
+Live site: https://etchsnap.techjeeper.com
+
+If Pages was previously serving the raw repo (`/src/main.tsx` MIME errors), re-run the **Deploy to GitHub Pages** workflow after merging these changes. In repo settings, set **Pages → Build and deployment → Source** to **GitHub Actions**.
+
 ## Notes
 
 - Image generation uses Google's `gemini-2.5-flash-image` model or OpenAI's `gpt-image-1` model.

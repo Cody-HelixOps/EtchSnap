@@ -3,15 +3,13 @@ import type { GenerateRequest } from '../types'
 import { postProcessDesign } from './imageUtils'
 import { buildPrompt } from './prompt'
 
-const IMAGE_MODEL = 'gemini-2.5-flash-image'
-
 export async function generateDesignWithGemini(
   request: GenerateRequest,
 ): Promise<string> {
   const ai = new GoogleGenAI({ apiKey: request.apiKey })
 
   const response = await ai.models.generateContent({
-    model: IMAGE_MODEL,
+    model: request.imageModel,
     contents: [
       {
         role: 'user',

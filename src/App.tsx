@@ -1,6 +1,20 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ImageSelector } from './components/ImageSelector'
+import { ModelSelect } from './components/ModelSelect'
+import { ProviderSelect } from './components/ProviderSelect'
 import { generateDesign } from './lib/generateDesign'
+import { enhanceDescription } from './lib/enhanceDescription'
+import {
+  fetchGeminiModels,
+  getDefaultGeminiImageModel,
+  getDefaultGeminiTextModel,
+  type ModelOption,
+} from './lib/geminiModels'
+import {
+  fetchOpenAiModels,
+  getDefaultOpenAiImageModel,
+  getDefaultOpenAiTextModel,
+} from './lib/openaiModels'
 import {
   cropPathToBase64,
   downloadDataUrl,
@@ -16,6 +30,10 @@ import './App.css'
 const GEMINI_KEY_STORAGE = 'etchsnap-gemini-api-key'
 const OPENAI_KEY_STORAGE = 'etchsnap-openai-api-key'
 const PROVIDER_STORAGE = 'etchsnap-image-provider'
+const GEMINI_TEXT_MODEL_STORAGE = 'etchsnap-gemini-text-model'
+const GEMINI_IMAGE_MODEL_STORAGE = 'etchsnap-gemini-image-model'
+const OPENAI_TEXT_MODEL_STORAGE = 'etchsnap-openai-text-model'
+const OPENAI_IMAGE_MODEL_STORAGE = 'etchsnap-openai-image-model'
 
 function App() {
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 })
@@ -28,6 +46,22 @@ function App() {
   const [openaiApiKey, setOpenaiApiKey] = useState(
     () => localStorage.getItem(OPENAI_KEY_STORAGE) ?? '',
   )
+  const [geminiTextModel, setGeminiTextModel] = useState(
+    () => localStorage.getItem(GEMINI_TEXT_MODEL_STORAGE) ?? '',
+  )
+  const [geminiImageModel, setGeminiImageModel] = useState(
+    () => localStorage.getItem(GEMINI_IMAGE_MODEL_STORAGE) ?? '',
+  )
+  const [openaiTextModel, setOpenaiTextModel] = useState(
+    () => localStorage.getItem(OPENAI_TEXT_MODEL_STORAGE) ?? '',
+  )
+  const [openaiImageModel, setOpenaiImageModel] = useState(
+    () => localStorage.getItem(OPENAI_IMAGE_MODEL_STORAGE) ?? '',
+  )
+  const [textModels, setTextModels] = useState<ModelOption[]>([])
+  const [imageModels, setImageModels] = useState<ModelOption[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const [modelsError, setModelsError] = useState<string | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -36,6 +70,7 @@ function App() {
   const [mode, setMode] = useState<OutputMode>('uv')
   const [resultDataUrl, setResultDataUrl] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isEnhancing, setIsEnhancing] = useState(false)
   const [isExportingSvg, setIsExportingSvg] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -45,6 +80,114 @@ function App() {
   )
 
   const apiKey = provider === 'openai' ? openaiApiKey : geminiApiKey
+  const textModel = provider === 'openai' ? openaiTextModel : geminiTextModel
+  const imageModel = provider === 'openai' ? openaiImageModel : geminiImageModel
+
+  useEffect(() => {
+    const key = apiKey.trim()
+    if (key.length < 8) {
+      setTextModels([])
+      setImageModels([])
+      setModelsError(null)
+      setIsLoadingModels(false)
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setIsLoadingModels(true)
+      setModelsError(null)
+
+      try {
+        if (provider === 'gemini') {
+          const models = await fetchGeminiModels(key)
+          if (cancelled) return
+
+          setTextModels(models.textModels)
+          setImageModels(models.imageModels)
+
+          setGeminiTextModel((current) => {
+            const next =
+              current && models.textModels.some((model) => model.id === current)
+                ? current
+                : getDefaultGeminiTextModel(models.textModels)
+            localStorage.setItem(GEMINI_TEXT_MODEL_STORAGE, next)
+            return next
+          })
+
+          setGeminiImageModel((current) => {
+            const next =
+              current && models.imageModels.some((model) => model.id === current)
+                ? current
+                : getDefaultGeminiImageModel(models.imageModels)
+            localStorage.setItem(GEMINI_IMAGE_MODEL_STORAGE, next)
+            return next
+          })
+        } else {
+          const models = await fetchOpenAiModels(key)
+          if (cancelled) return
+
+          setTextModels(models.textModels)
+          setImageModels(models.imageModels)
+
+          setOpenaiTextModel((current) => {
+            const next =
+              current && models.textModels.some((model) => model.id === current)
+                ? current
+                : getDefaultOpenAiTextModel(models.textModels)
+            localStorage.setItem(OPENAI_TEXT_MODEL_STORAGE, next)
+            return next
+          })
+
+          setOpenaiImageModel((current) => {
+            const next =
+              current && models.imageModels.some((model) => model.id === current)
+                ? current
+                : getDefaultOpenAiImageModel(models.imageModels)
+            localStorage.setItem(OPENAI_IMAGE_MODEL_STORAGE, next)
+            return next
+          })
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setTextModels([])
+          setImageModels([])
+          setModelsError(
+            err instanceof Error ? err.message : 'Could not load models for this API key.',
+          )
+        }
+      } finally {
+        if (!cancelled) setIsLoadingModels(false)
+      }
+    }, 700)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [provider, apiKey])
+
+  const handleTextModelChange = (value: string) => {
+    if (provider === 'openai') {
+      setOpenaiTextModel(value)
+      localStorage.setItem(OPENAI_TEXT_MODEL_STORAGE, value)
+      return
+    }
+
+    setGeminiTextModel(value)
+    localStorage.setItem(GEMINI_TEXT_MODEL_STORAGE, value)
+  }
+
+  const handleImageModelChange = (value: string) => {
+    if (provider === 'openai') {
+      setOpenaiImageModel(value)
+      localStorage.setItem(OPENAI_IMAGE_MODEL_STORAGE, value)
+      return
+    }
+
+    setGeminiImageModel(value)
+    localStorage.setItem(GEMINI_IMAGE_MODEL_STORAGE, value)
+  }
 
   const handleDisplaySizeChange = useCallback(
     (size: { width: number; height: number }) => setDisplaySize(size),
@@ -53,11 +196,23 @@ function App() {
 
   const canGenerate =
     apiKey.trim().length > 0 &&
+    textModel.trim().length > 0 &&
+    imageModel.trim().length > 0 &&
     sourceImage &&
     selection?.closed &&
     displaySize.width > 0 &&
     description.trim().length > 0 &&
-    !isGenerating
+    !isGenerating &&
+    !isEnhancing &&
+    !isLoadingModels
+
+  const canEnhance =
+    apiKey.trim().length > 0 &&
+    textModel.trim().length > 0 &&
+    description.trim().length > 0 &&
+    !isEnhancing &&
+    !isGenerating &&
+    !isLoadingModels
 
   const handleProviderChange = (value: ImageProvider) => {
     setProvider(value)
@@ -92,6 +247,30 @@ function App() {
     }
   }
 
+  const handleEnhanceDescription = async () => {
+    if (!canEnhance) return
+
+    setIsEnhancing(true)
+    setError(null)
+
+    try {
+      const enhanced = await enhanceDescription({
+        provider,
+        apiKey: apiKey.trim(),
+        textModel: textModel.trim(),
+        description: description.trim(),
+        mode,
+      })
+      setDescription(enhanced)
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Could not enhance description. Please try again.'
+      setError(message)
+    } finally {
+      setIsEnhancing(false)
+    }
+  }
+
   const handleGenerate = async () => {
     if (!canGenerate || !sourceImage || !selection) return
 
@@ -110,6 +289,7 @@ function App() {
       const dataUrl = await generateDesign({
         provider,
         apiKey: apiKey.trim(),
+        imageModel: imageModel.trim(),
         croppedImageBase64: base64,
         mimeType,
         description: description.trim(),
@@ -164,10 +344,6 @@ function App() {
             describe your design, and download a transparent PNG or vector SVG ready
             for production.
           </p>
-          <p className="privacy-note">
-            Your API key is kept in your browser only — EtchSnap does not send it to any
-            server except the AI provider you choose.
-          </p>
         </div>
       </header>
 
@@ -205,19 +381,7 @@ function App() {
 
           <label className="field">
             <span>Image provider</span>
-            <select
-              className="provider-select"
-              value={provider}
-              onChange={(event) =>
-                handleProviderChange(event.target.value as ImageProvider)
-              }
-            >
-              {PROVIDER_OPTIONS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <ProviderSelect value={provider} onChange={handleProviderChange} />
           </label>
 
           <label className="field">
@@ -248,15 +412,56 @@ function App() {
             </small>
           </label>
 
-          <label className="field">
-            <span>Design description</span>
+          {apiKey.trim().length > 0 && (
+            <>
+              <label className="field">
+                <span>Text model (AI Enhance)</span>
+                <ModelSelect
+                  value={textModel}
+                  options={textModels}
+                  onChange={handleTextModelChange}
+                  placeholder={isLoadingModels ? 'Loading models…' : 'Select a text model'}
+                  disabled={isLoadingModels || textModels.length === 0}
+                />
+              </label>
+
+              <label className="field">
+                <span>Image model (design generation)</span>
+                <ModelSelect
+                  value={imageModel}
+                  options={imageModels}
+                  onChange={handleImageModelChange}
+                  placeholder={isLoadingModels ? 'Loading models…' : 'Select an image model'}
+                  disabled={isLoadingModels || imageModels.length === 0}
+                />
+              </label>
+
+              {isLoadingModels && (
+                <p className="selection-meta">Loading available models for your API key…</p>
+              )}
+              {modelsError && <p className="error">{modelsError}</p>}
+            </>
+          )}
+
+          <div className="field">
+            <div className="field-label-row">
+              <span>Design description</span>
+              <button
+                type="button"
+                className="ghost-button enhance-button"
+                disabled={!canEnhance}
+                onClick={handleEnhanceDescription}
+              >
+                {isEnhancing ? 'Enhancing…' : 'AI Enhance'}
+              </button>
+            </div>
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               rows={5}
               placeholder="Example: Art deco floral border with the initials C.M. in the center, elegant and symmetrical."
             />
-          </label>
+          </div>
 
           <fieldset className="mode-toggle">
             <legend>Output mode</legend>

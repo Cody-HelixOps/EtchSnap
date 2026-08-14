@@ -14,8 +14,17 @@ export interface SelectionPath {
 export interface GenerateRequest {
   provider: ImageProvider
   apiKey: string
+  imageModel: string
   croppedImageBase64: string
   mimeType: string
+  description: string
+  mode: OutputMode
+}
+
+export interface EnhanceDescriptionRequest {
+  provider: ImageProvider
+  apiKey: string
+  textModel: string
   description: string
   mode: OutputMode
 }
