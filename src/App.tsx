@@ -23,6 +23,13 @@ import {
   loadImageFromFile,
 } from './lib/imageUtils'
 import { pngToSvg } from './lib/svgUtils'
+import {
+  trackDownload,
+  trackEnhance,
+  trackGenerate,
+  trackOutputMode,
+  trackProvider,
+} from './lib/analytics'
 import type { ImageProvider, OutputMode, SelectionPath } from './types'
 import { PROVIDER_OPTIONS } from './types'
 import './App.css'
@@ -218,6 +225,7 @@ function App() {
     setProvider(value)
     localStorage.setItem(PROVIDER_STORAGE, value)
     setError(null)
+    trackProvider(value)
   }
 
   const handleApiKeyChange = (value: string) => {
@@ -262,6 +270,7 @@ function App() {
         mode,
       })
       setDescription(enhanced)
+      trackEnhance(provider, mode)
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Could not enhance description. Please try again.'
@@ -297,6 +306,7 @@ function App() {
       })
 
       setResultDataUrl(dataUrl)
+      trackGenerate(provider, mode)
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Generation failed. Please try again.'
@@ -311,6 +321,7 @@ function App() {
   const handleDownloadPng = () => {
     if (!resultDataUrl) return
     downloadDataUrl(resultDataUrl, `${baseFileName}-${mode}.png`)
+    trackDownload('png', mode)
   }
 
   const handleDownloadSvg = async () => {
@@ -322,6 +333,7 @@ function App() {
     try {
       const svg = await pngToSvg(resultDataUrl, mode)
       downloadText(svg, `${baseFileName}-${mode}.svg`, 'image/svg+xml')
+      trackDownload('svg', mode)
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'SVG export failed. Please try again.'
@@ -471,7 +483,10 @@ function App() {
                 name="mode"
                 value="uv"
                 checked={mode === 'uv'}
-                onChange={() => setMode('uv')}
+                onChange={() => {
+                  setMode('uv')
+                  trackOutputMode('uv')
+                }}
               />
               <div>
                 <strong>Full color</strong>
@@ -484,7 +499,10 @@ function App() {
                 name="mode"
                 value="laser"
                 checked={mode === 'laser'}
-                onChange={() => setMode('laser')}
+                onChange={() => {
+                  setMode('laser')
+                  trackOutputMode('laser')
+                }}
               />
               <div>
                 <strong>Black & white</strong>
