@@ -6,8 +6,9 @@ export interface MagicWandOptions {
   simplifyEpsilon?: number
 }
 
-const MAX_FILL_RATIO = 0.42
-const MAX_BOUNDS_RATIO = 0.72
+const MAX_FILL_RATIO = 0.55
+const MAX_BOUNDS_RATIO = 0.78
+const HIGH_SENSITIVITY = 40
 
 function luminance(r: number, g: number, b: number): number {
   return 0.299 * r + 0.587 * g + 0.114 * b
@@ -75,9 +76,18 @@ function estimateLocalTolerance(
   const mean = sum / count
   const variance = Math.max(0, sumSq / count - mean * mean)
   const stdDev = Math.sqrt(variance)
-  const adaptiveCap = mean + stdDev * 1.1 + 3
+  const adaptiveCap = mean + stdDev * 1.15 + 4
 
-  return Math.min(userTolerance, Math.max(8, adaptiveCap))
+  if (userTolerance <= HIGH_SENSITIVITY) {
+    return Math.min(userTolerance, Math.max(8, adaptiveCap))
+  }
+
+  return userTolerance
+}
+
+function getStepTolerance(tolerance: number, userTolerance: number): number {
+  const stepRatio = 0.52 + Math.min(0.43, userTolerance / 180)
+  return Math.max(10, tolerance * stepRatio)
 }
 
 function stepBoundaryStrength(
@@ -152,7 +162,7 @@ function floodFillMask(
   const seedG = data[seedIndex + 1]
   const seedB = data[seedIndex + 2]
   const tolerance = estimateLocalTolerance(data, width, height, sx, sy, colorTolerance)
-  const stepTolerance = Math.max(8, tolerance * 0.55)
+  const stepTolerance = getStepTolerance(tolerance, colorTolerance)
 
   if (!canIncludePixel(data, seedIndex, seedR, seedG, seedB, tolerance)) {
     return null
@@ -323,17 +333,30 @@ function isBackgroundLikeMask(mask: Uint8Array, width: number, height: number): 
   return false
 }
 
-function isUsableMask(mask: Uint8Array, width: number, height: number): boolean {
+function isUsableMask(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  colorTolerance: number,
+): boolean {
   const filled = countMaskPixels(mask)
   const total = width * height
-  if (filled === 0 || filled / total > MAX_FILL_RATIO) return false
+  const maxFillRatio =
+    colorTolerance >= HIGH_SENSITIVITY ? MAX_FILL_RATIO : Math.min(MAX_FILL_RATIO, 0.48)
+
+  if (filled === 0 || filled / total > maxFillRatio) return false
 
   const bounds = getMaskBounds(mask, width, height)
   if (!bounds) return false
 
   const boundsArea = (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1)
-  if (boundsArea / total > MAX_BOUNDS_RATIO) return false
-  if (isBackgroundLikeMask(mask, width, height)) return false
+  const maxBoundsRatio =
+    colorTolerance >= HIGH_SENSITIVITY ? MAX_BOUNDS_RATIO : Math.min(MAX_BOUNDS_RATIO, 0.74)
+
+  if (boundsArea / total > maxBoundsRatio) return false
+  if (colorTolerance < HIGH_SENSITIVITY && isBackgroundLikeMask(mask, width, height)) {
+    return false
+  }
 
   return true
 }
@@ -467,7 +490,7 @@ export function magicWandSelection(
   seedY: number,
   options: MagicWandOptions = {},
 ): Point[] | null {
-  const colorTolerance = options.colorTolerance ?? 24
+  const colorTolerance = options.colorTolerance ?? 32
   const edgeThreshold = options.edgeThreshold ?? getMagicWandEdgeThreshold(colorTolerance)
   const simplifyEpsilon = options.simplifyEpsilon ?? 2.5
 
@@ -481,7 +504,7 @@ export function magicWandSelection(
   if (!mask) return null
 
   fillInternalHoles(mask, imageData.width, imageData.height)
-  if (!isUsableMask(mask, imageData.width, imageData.height)) return null
+  if (!isUsableMask(mask, imageData.width, imageData.height, colorTolerance)) return null
 
   const boundary = traceBoundary(mask, imageData.width, imageData.height)
   if (boundary.length < 3) return null
@@ -497,5 +520,5 @@ export function magicWandSelection(
 }
 
 export function getMagicWandEdgeThreshold(colorTolerance: number): number {
-  return Math.max(10, Math.round(30 - colorTolerance * 0.38))
+  return Math.round(14 + colorTolerance * 0.45)
 }

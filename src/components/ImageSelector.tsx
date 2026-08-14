@@ -86,7 +86,7 @@ export function ImageSelector({
   const [tool, setTool] = useState<SelectionTool>('polygon')
   const [draftPoints, setDraftPoints] = useState<Point[]>([])
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null)
-  const [wandTolerance, setWandTolerance] = useState(24)
+  const [wandTolerance, setWandTolerance] = useState(32)
   const [wandError, setWandError] = useState<string | null>(null)
 
   const isDrawing = tool === 'polygon' && draftPoints.length > 0
@@ -336,10 +336,11 @@ export function ImageSelector({
                 <input
                   type="range"
                   min={8}
-                  max={48}
+                  max={96}
                   value={wandTolerance}
                   onChange={(event) => setWandTolerance(Number(event.target.value))}
                 />
+                <span className="wand-sensitivity-value">{wandTolerance}</span>
               </label>
             )}
             <button type="button" className="ghost-button" onClick={handleClear}>
@@ -356,7 +357,7 @@ export function ImageSelector({
           />
           <p className="canvas-hint">
             {tool === 'wand'
-              ? 'Click a surface to select it. Hold Shift and click to add another region.'
+              ? 'Click a surface to select it. Hold Shift and click to add another region. Raise sensitivity if the fill stops too early.'
               : isDrawing
                 ? nearStart
                   ? ' Click the first point to close the shape. Hold Shift while closing to add another region.'

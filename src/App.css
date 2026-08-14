@@ -113,6 +113,12 @@
   width: 120px;
 }
 
+.wand-sensitivity-value {
+  min-width: 1.75rem;
+  color: #eef2ff;
+  font-variant-numeric: tabular-nums;
+}
+
 .selection-canvas.wand-cursor {
   cursor: cell;
 }
