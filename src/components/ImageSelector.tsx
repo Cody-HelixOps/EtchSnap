@@ -411,7 +411,14 @@ export function ImageSelector({
               </button>
             </div>
           </div>
-          <div className="canvas-viewport">
+          <div
+            className="canvas-viewport"
+            style={{
+              width: baseDisplaySize.width,
+              height: baseDisplaySize.height,
+              maxWidth: '100%',
+            }}
+          >
             <div
               className="canvas-zoom-frame"
               style={{
