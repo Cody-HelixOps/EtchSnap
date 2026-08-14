@@ -25,6 +25,7 @@ export interface GenerateRequest {
   mimeType: string
   description: string
   mode: OutputMode
+  complexity: number
 }
 
 export interface EnhanceDescriptionRequest {
@@ -33,6 +34,7 @@ export interface EnhanceDescriptionRequest {
   textModel: string
   description: string
   mode: OutputMode
+  complexity: number
 }
 
 export const PROVIDER_OPTIONS: Array<{

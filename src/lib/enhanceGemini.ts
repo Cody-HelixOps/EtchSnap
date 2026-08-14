@@ -12,7 +12,7 @@ export async function enhanceDescriptionWithGemini(
     contents: [
       {
         role: 'user',
-        parts: [{ text: buildEnhancePrompt(request.description, request.mode) }],
+        parts: [{ text: buildEnhancePrompt(request.description, request.mode, request.complexity) }],
       },
     ],
   })

@@ -24,6 +24,7 @@ import {
   loadImageFromFile,
 } from './lib/imageUtils'
 import { pngToSvg } from './lib/svgUtils'
+import { getComplexityLabel } from './lib/prompt'
 import {
   trackDownload,
   trackEnhance,
@@ -42,6 +43,7 @@ const GEMINI_TEXT_MODEL_STORAGE = 'etchsnap-gemini-text-model'
 const GEMINI_IMAGE_MODEL_STORAGE = 'etchsnap-gemini-image-model'
 const OPENAI_TEXT_MODEL_STORAGE = 'etchsnap-openai-text-model'
 const OPENAI_IMAGE_MODEL_STORAGE = 'etchsnap-openai-image-model'
+const COMPLEXITY_STORAGE = 'etchsnap-design-complexity'
 
 function App() {
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 })
@@ -75,6 +77,10 @@ function App() {
   const [fileName, setFileName] = useState<string | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [description, setDescription] = useState('')
+  const [complexity, setComplexity] = useState(() => {
+    const stored = Number(localStorage.getItem(COMPLEXITY_STORAGE))
+    return Number.isFinite(stored) ? Math.min(100, Math.max(0, stored)) : 50
+  })
   const [mode, setMode] = useState<OutputMode>('uv')
   const [resultDataUrl, setResultDataUrl] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -269,6 +275,7 @@ function App() {
         textModel: textModel.trim(),
         description: description.trim(),
         mode,
+        complexity,
       })
       setDescription(enhanced)
       trackEnhance(provider, mode)
@@ -304,6 +311,7 @@ function App() {
         mimeType,
         description: description.trim(),
         mode,
+        complexity,
       })
 
       setResultDataUrl(dataUrl)
@@ -480,6 +488,30 @@ function App() {
               placeholder="Example: Art deco floral border with the initials C.M. in the center, elegant and symmetrical."
             />
           </div>
+
+          <label className="field">
+            <div className="field-label-row">
+              <span>Design complexity</span>
+              <span className="complexity-value">{getComplexityLabel(complexity)}</span>
+            </div>
+            <div className="complexity-slider">
+              <span>Simple</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={complexity}
+                onChange={(event) => {
+                  const next = Number(event.target.value)
+                  setComplexity(next)
+                  localStorage.setItem(COMPLEXITY_STORAGE, String(next))
+                }}
+                aria-label="Design complexity"
+              />
+              <span>Complex</span>
+            </div>
+          </label>
 
           <fieldset className="mode-toggle">
             <legend>Output mode</legend>

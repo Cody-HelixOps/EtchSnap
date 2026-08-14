@@ -1,6 +1,46 @@
 import type { OutputMode } from '../types'
 
-export function buildPrompt(description: string, mode: OutputMode): string {
+export function getComplexityLabel(complexity: number): string {
+  if (complexity <= 20) return 'Simple'
+  if (complexity <= 40) return 'Light'
+  if (complexity <= 60) return 'Balanced'
+  if (complexity <= 80) return 'Detailed'
+  return 'Complex'
+}
+
+export function buildComplexityInstructions(complexity: number): string {
+  if (complexity <= 20) {
+    return `Design complexity: SIMPLE.
+Keep the artwork minimal with few elements, bold clean shapes, and little fine detail.
+Avoid ornate patterns, dense textures, or busy backgrounds.`
+  }
+
+  if (complexity <= 40) {
+    return `Design complexity: LIGHT.
+Use a clean, readable design with modest detail and simple supporting elements.
+Avoid heavy ornamentation or intricate pattern fills.`
+  }
+
+  if (complexity <= 60) {
+    return `Design complexity: BALANCED.
+Include a moderate level of detail and visual interest without making the design overly busy.
+Mix clear focal elements with restrained supporting detail.`
+  }
+
+  if (complexity <= 80) {
+    return `Design complexity: DETAILED.
+Include rich visual detail, layered elements, refined linework, and decorative accents while keeping the design readable.`
+  }
+
+  return `Design complexity: COMPLEX.
+Create intricate, ornate artwork with fine detail, layered motifs, sophisticated pattern work, and visually dense composition.`
+}
+
+export function buildPrompt(
+  description: string,
+  mode: OutputMode,
+  complexity: number,
+): string {
   const modeInstructions =
     mode === 'uv'
       ? `Use full vibrant color suitable for UV printing on physical objects.
@@ -13,6 +53,8 @@ No gray, no gradients, no color — high-contrast artwork suitable for laser eng
 The attached image shows the exact surface region where the design will be applied.
 
 Design request: ${description}
+
+${buildComplexityInstructions(complexity)}
 
 Output requirements:
 - Return ONLY the decorative design artwork itself

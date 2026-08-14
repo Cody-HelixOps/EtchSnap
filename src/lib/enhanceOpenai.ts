@@ -30,7 +30,7 @@ export async function enhanceDescriptionWithOpenAI(
       messages: [
         {
           role: 'user',
-          content: buildEnhancePrompt(request.description, request.mode),
+          content: buildEnhancePrompt(request.description, request.mode, request.complexity),
         },
       ],
     }),

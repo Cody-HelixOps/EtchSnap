@@ -20,7 +20,7 @@ export async function generateDesignWithGemini(
               data: request.croppedImageBase64,
             },
           },
-          { text: buildPrompt(request.description, request.mode) },
+          { text: buildPrompt(request.description, request.mode, request.complexity) },
         ],
       },
     ],

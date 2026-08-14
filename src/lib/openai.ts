@@ -36,7 +36,7 @@ export async function generateDesignWithOpenAI(
   const form = new FormData()
   form.append('model', request.imageModel)
   form.append('image', imageBlob, 'surface-region.png')
-  form.append('prompt', buildPrompt(request.description, request.mode))
+  form.append('prompt', buildPrompt(request.description, request.mode, request.complexity))
   form.append('background', 'transparent')
   form.append('output_format', 'png')
   form.append('quality', 'high')

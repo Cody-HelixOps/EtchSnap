@@ -236,6 +236,24 @@
   white-space: nowrap;
 }
 
+.complexity-value {
+  color: #c4b5fd;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.complexity-slider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #9aa3b2;
+  font-size: 0.92rem;
+}
+
+.complexity-slider input[type='range'] {
+  flex: 1;
+}
+
 .field small {
   color: #9aa3b2;
 }
