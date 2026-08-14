@@ -82,6 +82,7 @@ export function ImageSelector({
   onDisplaySizeChange,
 }: ImageSelectorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageDataRef = useRef<ImageData | null>(null)
   const shiftHeldRef = useRef(false)
@@ -105,13 +106,14 @@ export function ImageSelector({
     distance(hoverPoint, draftPoints[0]) <= CLOSE_RADIUS
 
   const updateDisplaySize = useCallback(() => {
-    if (!image || !containerRef.current) return
+    if (!image || !viewportRef.current) return
 
-    const maxWidth = containerRef.current.clientWidth
-    const scale = Math.min(1, maxWidth / image.naturalWidth)
+    const maxWidth = viewportRef.current.clientWidth
+    if (maxWidth === 0) return
+
     const next = {
-      width: Math.round(image.naturalWidth * scale),
-      height: Math.round(image.naturalHeight * scale),
+      width: maxWidth,
+      height: Math.round((maxWidth * image.naturalHeight) / image.naturalWidth),
     }
     setBaseDisplaySize(next)
     onDisplaySizeChange?.(next)
@@ -122,10 +124,17 @@ export function ImageSelector({
   }, [image])
 
   useEffect(() => {
+    const viewport = viewportRef.current
+    if (!image || !viewport) return
+
+    const observer = new ResizeObserver(() => {
+      updateDisplaySize()
+    })
+    observer.observe(viewport)
     updateDisplaySize()
-    window.addEventListener('resize', updateDisplaySize)
-    return () => window.removeEventListener('resize', updateDisplaySize)
-  }, [updateDisplaySize])
+
+    return () => observer.disconnect()
+  }, [image, updateDisplaySize])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -412,11 +421,10 @@ export function ImageSelector({
             </div>
           </div>
           <div
+            ref={viewportRef}
             className="canvas-viewport"
             style={{
-              width: baseDisplaySize.width,
-              height: baseDisplaySize.height,
-              maxWidth: '100%',
+              height: baseDisplaySize.height > 0 ? baseDisplaySize.height : undefined,
             }}
           >
             <div

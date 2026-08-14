@@ -154,7 +154,7 @@
 .canvas-viewport {
   overflow: auto;
   width: 100%;
-  max-width: 100%;
+  min-height: 280px;
   border-radius: 0.85rem;
   background: rgba(0, 0, 0, 0.18);
   border: 1px solid rgba(255, 255, 255, 0.08);
