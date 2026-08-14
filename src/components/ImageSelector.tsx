@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Point, SelectionPath, SelectionTool } from '../types'
 import { getPathBounds } from '../lib/imageUtils'
-import { magicWandSelection } from '../lib/magicWand'
+import { getMagicWandEdgeThreshold, magicWandSelection } from '../lib/magicWand'
 
 interface ImageSelectorProps {
   image: HTMLImageElement | null
@@ -92,7 +92,7 @@ export function ImageSelector({
   const [tool, setTool] = useState<SelectionTool>('polygon')
   const [draftPoints, setDraftPoints] = useState<Point[]>([])
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null)
-  const [wandTolerance, setWandTolerance] = useState(34)
+  const [wandTolerance, setWandTolerance] = useState(24)
   const [wandError, setWandError] = useState<string | null>(null)
 
   const isDrawing = tool === 'polygon' && draftPoints.length > 0
@@ -182,10 +182,13 @@ export function ImageSelector({
 
     const points = magicWandSelection(imageData, point.x, point.y, {
       colorTolerance: wandTolerance,
+      edgeThreshold: getMagicWandEdgeThreshold(wandTolerance),
     })
 
     if (!points) {
-      setWandError('Could not detect a surface there. Try another spot or adjust sensitivity.')
+      setWandError(
+        'Could not detect a bounded surface there. Click the object surface, or lower sensitivity.',
+      )
       onSelectionChange(null)
       return
     }
@@ -309,8 +312,8 @@ export function ImageSelector({
                 <span>Sensitivity</span>
                 <input
                   type="range"
-                  min={12}
-                  max={72}
+                  min={8}
+                  max={48}
                   value={wandTolerance}
                   onChange={(event) => setWandTolerance(Number(event.target.value))}
                 />
@@ -330,7 +333,7 @@ export function ImageSelector({
           />
           <p className="canvas-hint">
             {tool === 'wand'
-              ? 'Click inside the surface you want. EtchSnap will follow visible color boundaries.'
+              ? 'Click inside the object surface — not the background. Increase sensitivity only if the fill stops too early.'
               : isDrawing
                 ? nearStart
                   ? ' Click the first point to close the shape.'
