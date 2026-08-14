@@ -157,8 +157,14 @@ export function ImageSelector({
   const getCanvasPoint = (
     event: React.MouseEvent<HTMLCanvasElement>,
   ): Point => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    return clampPoint(event.clientX - rect.left, event.clientY - rect.top)
+    const canvas = event.currentTarget
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    return clampPoint(
+      (event.clientX - rect.left) * scaleX,
+      (event.clientY - rect.top) * scaleY,
+    )
   }
 
   const finalizeShape = (points: Point[]) => {
@@ -187,7 +193,7 @@ export function ImageSelector({
 
     if (!points) {
       setWandError(
-        'Could not detect a bounded surface there. Click the object surface, or lower sensitivity.',
+        'Could not detect a bounded surface there. Click the object itself (not the pegboard/background), or adjust sensitivity.',
       )
       onSelectionChange(null)
       return

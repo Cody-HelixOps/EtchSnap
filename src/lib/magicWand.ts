@@ -6,7 +6,8 @@ export interface MagicWandOptions {
   simplifyEpsilon?: number
 }
 
-const MAX_FILL_RATIO = 0.62
+const MAX_FILL_RATIO = 0.42
+const MAX_BOUNDS_RATIO = 0.72
 
 function luminance(r: number, g: number, b: number): number {
   return 0.299 * r + 0.587 * g + 0.114 * b
@@ -74,9 +75,9 @@ function estimateLocalTolerance(
   const mean = sum / count
   const variance = Math.max(0, sumSq / count - mean * mean)
   const stdDev = Math.sqrt(variance)
-  const adaptiveCap = mean + stdDev * 1.35 + 4
+  const adaptiveCap = mean + stdDev * 1.1 + 3
 
-  return Math.min(userTolerance, Math.max(10, adaptiveCap))
+  return Math.min(userTolerance, Math.max(8, adaptiveCap))
 }
 
 function stepBoundaryStrength(
@@ -93,7 +94,7 @@ function stepBoundaryStrength(
   const lum2 = luminance(data[i2], data[i2 + 1], data[i2 + 2])
   const lumDiff = Math.abs(lum1 - lum2)
   const rgbDiff = rgbDistanceAt(data, i1, i2)
-  return Math.max(lumDiff, rgbDiff * 0.85)
+  return Math.max(lumDiff, rgbDiff * 0.9)
 }
 
 function canIncludePixel(
@@ -119,10 +120,17 @@ function canExpandToNeighbor(
   seedG: number,
   seedB: number,
   tolerance: number,
+  stepTolerance: number,
   edgeThreshold: number,
 ): boolean {
+  const parentIndex = (y * width + x) * 4
   const neighborIndex = (ny * width + nx) * 4
+
   if (!canIncludePixel(data, neighborIndex, seedR, seedG, seedB, tolerance)) {
+    return false
+  }
+
+  if (rgbDistanceAt(data, parentIndex, neighborIndex) > stepTolerance) {
     return false
   }
 
@@ -144,6 +152,7 @@ function floodFillMask(
   const seedG = data[seedIndex + 1]
   const seedB = data[seedIndex + 2]
   const tolerance = estimateLocalTolerance(data, width, height, sx, sy, colorTolerance)
+  const stepTolerance = Math.max(8, tolerance * 0.55)
 
   if (!canIncludePixel(data, seedIndex, seedR, seedG, seedB, tolerance)) {
     return null
@@ -190,6 +199,7 @@ function floodFillMask(
           seedG,
           seedB,
           tolerance,
+          stepTolerance,
           edgeThreshold,
         )
       ) {
@@ -206,6 +216,128 @@ function floodFillMask(
   return filled > 0 ? mask : null
 }
 
+function fillInternalHoles(mask: Uint8Array, width: number, height: number): void {
+  const exterior = new Uint8Array(width * height)
+  const queue = new Int32Array(width * height)
+  let head = 0
+  let tail = 0
+
+  const enqueueExterior = (x: number, y: number) => {
+    const index = y * width + x
+    if (mask[index] || exterior[index]) return
+    exterior[index] = 1
+    queue[tail++] = index
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    enqueueExterior(x, 0)
+    enqueueExterior(x, height - 1)
+  }
+  for (let y = 0; y < height; y += 1) {
+    enqueueExterior(0, y)
+    enqueueExterior(width - 1, y)
+  }
+
+  while (head < tail) {
+    const index = queue[head++]
+    const x = index % width
+    const y = Math.floor(index / width)
+
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+      enqueueExterior(nx, ny)
+    }
+  }
+
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index] && !exterior[index]) {
+      mask[index] = 1
+    }
+  }
+}
+
+function countMaskPixels(mask: Uint8Array): number {
+  let count = 0
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index]) count += 1
+  }
+  return count
+}
+
+function getMaskBounds(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!mask[y * width + x]) continue
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+    }
+  }
+
+  if (maxX === -1) return null
+  return { minX, minY, maxX, maxY }
+}
+
+function countBorderTouches(mask: Uint8Array, width: number, height: number): number {
+  let left = false
+  let right = false
+  let top = false
+  let bottom = false
+
+  for (let x = 0; x < width; x += 1) {
+    if (mask[x]) top = true
+    if (mask[(height - 1) * width + x]) bottom = true
+  }
+  for (let y = 0; y < height; y += 1) {
+    if (mask[y * width]) left = true
+    if (mask[y * width + width - 1]) right = true
+  }
+
+  return [left, right, top, bottom].filter(Boolean).length
+}
+
+function isBackgroundLikeMask(mask: Uint8Array, width: number, height: number): boolean {
+  const filled = countMaskPixels(mask)
+  const fillRatio = filled / (width * height)
+  const borderTouches = countBorderTouches(mask, width, height)
+
+  if (borderTouches >= 3) return true
+  if (borderTouches >= 2 && fillRatio > 0.28) return true
+  return false
+}
+
+function isUsableMask(mask: Uint8Array, width: number, height: number): boolean {
+  const filled = countMaskPixels(mask)
+  const total = width * height
+  if (filled === 0 || filled / total > MAX_FILL_RATIO) return false
+
+  const bounds = getMaskBounds(mask, width, height)
+  if (!bounds) return false
+
+  const boundsArea = (bounds.maxX - bounds.minX + 1) * (bounds.maxY - bounds.minY + 1)
+  if (boundsArea / total > MAX_BOUNDS_RATIO) return false
+  if (isBackgroundLikeMask(mask, width, height)) return false
+
+  return true
+}
+
 function isBoundaryPixel(
   mask: Uint8Array,
   width: number,
@@ -220,10 +352,6 @@ function isBoundaryPixel(
     [-1, 0],
     [0, 1],
     [0, -1],
-    [1, 1],
-    [-1, 1],
-    [1, -1],
-    [-1, -1],
   ]) {
     const nx = x + dx
     const ny = y + dy
@@ -340,8 +468,8 @@ export function magicWandSelection(
   options: MagicWandOptions = {},
 ): Point[] | null {
   const colorTolerance = options.colorTolerance ?? 24
-  const edgeThreshold = options.edgeThreshold ?? 28
-  const simplifyEpsilon = options.simplifyEpsilon ?? 2.2
+  const edgeThreshold = options.edgeThreshold ?? getMagicWandEdgeThreshold(colorTolerance)
+  const simplifyEpsilon = options.simplifyEpsilon ?? 2.5
 
   const mask = floodFillMask(
     imageData,
@@ -352,13 +480,22 @@ export function magicWandSelection(
   )
   if (!mask) return null
 
+  fillInternalHoles(mask, imageData.width, imageData.height)
+  if (!isUsableMask(mask, imageData.width, imageData.height)) return null
+
   const boundary = traceBoundary(mask, imageData.width, imageData.height)
   if (boundary.length < 3) return null
 
-  const simplified = simplifyPath(boundary, simplifyEpsilon)
+  const epsilon =
+    boundary.length > 400
+      ? Math.max(simplifyEpsilon, 4.5)
+      : boundary.length > 180
+        ? Math.max(simplifyEpsilon, 3.5)
+        : simplifyEpsilon
+  const simplified = simplifyPath(boundary, epsilon)
   return simplified.length >= 3 ? simplified : boundary
 }
 
 export function getMagicWandEdgeThreshold(colorTolerance: number): number {
-  return Math.max(16, Math.round(44 - colorTolerance * 0.28))
+  return Math.max(10, Math.round(30 - colorTolerance * 0.38))
 }
