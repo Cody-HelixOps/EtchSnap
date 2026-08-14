@@ -119,13 +119,43 @@
   font-variant-numeric: tabular-nums;
 }
 
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #b8beca;
+  font-size: 0.92rem;
+}
+
+.zoom-controls input[type='range'] {
+  width: 96px;
+}
+
+.zoom-button {
+  min-width: 2rem;
+  padding-inline: 0.55rem;
+}
+
+.zoom-value {
+  min-width: 2.75rem;
+  color: #eef2ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-viewport {
+  overflow: auto;
+  max-width: 100%;
+  max-height: min(70vh, 720px);
+  border-radius: 0.85rem;
+  background: rgba(0, 0, 0, 0.18);
+}
+
 .selection-canvas.wand-cursor {
   cursor: cell;
 }
 
 .selection-canvas {
   display: block;
-  max-width: 100%;
   border-radius: 0.85rem;
   cursor: crosshair;
   touch-action: none;

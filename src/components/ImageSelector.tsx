@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Point, Selection, SelectionPath, SelectionTool } from '../types'
 import { isValidRegion } from '../lib/imageUtils'
 import { getMagicWandEdgeThreshold, magicWandSelection } from '../lib/magicWand'
@@ -12,9 +12,19 @@ interface ImageSelectorProps {
 
 const MIN_POINTS = 3
 const CLOSE_RADIUS = 14
+const MIN_ZOOM = 0.5
+const MAX_ZOOM = 3
+const ZOOM_STEP = 0.25
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function scalePoints(points: Point[], factor: number): Point[] {
+  return points.map((point) => ({
+    x: point.x * factor,
+    y: point.y * factor,
+  }))
 }
 
 function drawPath(
@@ -82,7 +92,8 @@ export function ImageSelector({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageDataRef = useRef<ImageData | null>(null)
   const shiftHeldRef = useRef(false)
-  const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 })
+  const [baseDisplaySize, setBaseDisplaySize] = useState({ width: 0, height: 0 })
+  const [zoom, setZoom] = useState(1)
   const [tool, setTool] = useState<SelectionTool>('polygon')
   const [draftPoints, setDraftPoints] = useState<Point[]>([])
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null)
@@ -91,6 +102,14 @@ export function ImageSelector({
 
   const isDrawing = tool === 'polygon' && draftPoints.length > 0
   const regionCount = selection?.regions.length ?? 0
+
+  const canvasSize = useMemo(
+    () => ({
+      width: Math.round(baseDisplaySize.width * zoom),
+      height: Math.round(baseDisplaySize.height * zoom),
+    }),
+    [baseDisplaySize, zoom],
+  )
 
   const nearStart =
     isDrawing &&
@@ -107,9 +126,13 @@ export function ImageSelector({
       width: Math.round(image.naturalWidth * scale),
       height: Math.round(image.naturalHeight * scale),
     }
-    setDisplaySize(next)
+    setBaseDisplaySize(next)
     onDisplaySizeChange?.(next)
   }, [image, onDisplaySizeChange])
+
+  useEffect(() => {
+    setZoom(1)
+  }, [image])
 
   useEffect(() => {
     updateDisplaySize()
@@ -134,32 +157,50 @@ export function ImageSelector({
   }, [])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !image || displaySize.width === 0) return
+    if (!image || baseDisplaySize.width === 0) return
 
-    canvas.width = displaySize.width
-    canvas.height = displaySize.height
+    const offscreen = document.createElement('canvas')
+    offscreen.width = baseDisplaySize.width
+    offscreen.height = baseDisplaySize.height
+    const ctx = offscreen.getContext('2d')
+    if (!ctx) return
+
+    ctx.drawImage(image, 0, 0, baseDisplaySize.width, baseDisplaySize.height)
+    imageDataRef.current = ctx.getImageData(0, 0, offscreen.width, offscreen.height)
+  }, [image, baseDisplaySize])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !image || canvasSize.width === 0) return
+
+    canvas.width = canvasSize.width
+    canvas.height = canvasSize.height
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(image, 0, 0, displaySize.width, displaySize.height)
-    imageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(image, 0, 0, canvasSize.width, canvasSize.height)
 
     selection?.regions.forEach((region) => {
       if (region.points.length > 0) {
-        drawPath(ctx, region.points, region.closed)
+        drawPath(ctx, scalePoints(region.points, zoom), region.closed)
       }
     })
 
     if (isDrawing && draftPoints.length > 0) {
-      drawPath(ctx, draftPoints, false, hoverPoint, nearStart)
+      drawPath(
+        ctx,
+        scalePoints(draftPoints, zoom),
+        false,
+        hoverPoint ? { x: hoverPoint.x * zoom, y: hoverPoint.y * zoom } : null,
+        nearStart,
+      )
     }
-  }, [image, displaySize, selection, draftPoints, hoverPoint, isDrawing, nearStart])
+  }, [image, canvasSize, zoom, selection, draftPoints, hoverPoint, isDrawing, nearStart])
 
   const clampPoint = (x: number, y: number): Point => ({
-    x: Math.max(0, Math.min(displaySize.width, x)),
-    y: Math.max(0, Math.min(displaySize.height, y)),
+    x: Math.max(0, Math.min(baseDisplaySize.width, x)),
+    y: Math.max(0, Math.min(baseDisplaySize.height, y)),
   })
 
   const getCanvasPoint = (
@@ -170,9 +211,20 @@ export function ImageSelector({
     const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
     return clampPoint(
-      (event.clientX - rect.left) * scaleX,
-      (event.clientY - rect.top) * scaleY,
+      ((event.clientX - rect.left) * scaleX) / zoom,
+      ((event.clientY - rect.top) * scaleY) / zoom,
     )
+  }
+
+  const adjustZoom = (delta: number) => {
+    setZoom((current) => {
+      const next = Math.round((current + delta) * 100) / 100
+      return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next))
+    })
+  }
+
+  const handleZoomSlider = (value: number) => {
+    setZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value / 100)))
   }
 
   const applyRegion = (closedPath: SelectionPath, append: boolean) => {
@@ -346,18 +398,59 @@ export function ImageSelector({
             <button type="button" className="ghost-button" onClick={handleClear}>
               Clear {regionCount > 1 ? 'all' : 'selection'}
             </button>
+            <div className="zoom-controls">
+              <span>Zoom</span>
+              <button
+                type="button"
+                className="ghost-button zoom-button"
+                aria-label="Zoom out"
+                disabled={zoom <= MIN_ZOOM}
+                onClick={() => adjustZoom(-ZOOM_STEP)}
+              >
+                −
+              </button>
+              <input
+                type="range"
+                min={MIN_ZOOM * 100}
+                max={MAX_ZOOM * 100}
+                step={5}
+                value={Math.round(zoom * 100)}
+                onChange={(event) => handleZoomSlider(Number(event.target.value))}
+                aria-label="Zoom level"
+              />
+              <button
+                type="button"
+                className="ghost-button zoom-button"
+                aria-label="Zoom in"
+                disabled={zoom >= MAX_ZOOM}
+                onClick={() => adjustZoom(ZOOM_STEP)}
+              >
+                +
+              </button>
+              <span className="zoom-value">{Math.round(zoom * 100)}%</span>
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={zoom === 1}
+                onClick={() => setZoom(1)}
+              >
+                Fit
+              </button>
+            </div>
           </div>
-          <canvas
-            ref={canvasRef}
-            className={`selection-canvas${tool === 'wand' ? ' wand-cursor' : ''}`}
-            style={{ width: displaySize.width, height: displaySize.height }}
-            onClick={handleCanvasClick}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-          />
+          <div className="canvas-viewport">
+            <canvas
+              ref={canvasRef}
+              className={`selection-canvas${tool === 'wand' ? ' wand-cursor' : ''}`}
+              style={{ width: canvasSize.width, height: canvasSize.height }}
+              onClick={handleCanvasClick}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+            />
+          </div>
           <p className="canvas-hint">
             {tool === 'wand'
-              ? 'Click a surface to select it. Hold Shift and click to add another region. Raise sensitivity if the fill stops too early.'
+              ? 'Click a surface to select it. Hold Shift and click to add another region. Zoom in for precise edges; raise sensitivity if the fill stops too early.'
               : isDrawing
                 ? nearStart
                   ? ' Click the first point to close the shape. Hold Shift while closing to add another region.'
