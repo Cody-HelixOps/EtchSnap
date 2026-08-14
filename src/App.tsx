@@ -16,10 +16,11 @@ import {
   getDefaultOpenAiTextModel,
 } from './lib/openaiModels'
 import {
-  cropPathToBase64,
+  cropSelectionToBase64,
   downloadDataUrl,
   downloadText,
-  getPathBounds,
+  getSelectionBounds,
+  isValidSelection,
   loadImageFromFile,
 } from './lib/imageUtils'
 import { pngToSvg } from './lib/svgUtils'
@@ -30,7 +31,7 @@ import {
   trackOutputMode,
   trackProvider,
 } from './lib/analytics'
-import type { ImageProvider, OutputMode, SelectionPath } from './types'
+import type { ImageProvider, OutputMode, Selection } from './types'
 import { PROVIDER_OPTIONS } from './types'
 import './App.css'
 
@@ -72,7 +73,7 @@ function App() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
-  const [selection, setSelection] = useState<SelectionPath | null>(null)
+  const [selection, setSelection] = useState<Selection | null>(null)
   const [description, setDescription] = useState('')
   const [mode, setMode] = useState<OutputMode>('uv')
   const [resultDataUrl, setResultDataUrl] = useState<string | null>(null)
@@ -206,7 +207,7 @@ function App() {
     textModel.trim().length > 0 &&
     imageModel.trim().length > 0 &&
     sourceImage &&
-    selection?.closed &&
+    isValidSelection(selection) &&
     displaySize.width > 0 &&
     description.trim().length > 0 &&
     !isGenerating &&
@@ -288,7 +289,7 @@ function App() {
     setResultDataUrl(null)
 
     try {
-      const { base64, mimeType } = cropPathToBase64(
+      const { base64, mimeType } = cropSelectionToBase64(
         sourceImage,
         selection,
         displaySize.width,
@@ -343,7 +344,11 @@ function App() {
     }
   }
 
-  const selectionBounds = selection ? getPathBounds(selection.points) : null
+  const selectionBounds = selection ? getSelectionBounds(selection) : null
+  const selectionPointCount = selection?.regions.reduce(
+    (total, region) => total + region.points.length,
+    0,
+  )
 
   return (
     <div className="app">
@@ -380,7 +385,8 @@ function App() {
 
           {selectionBounds && (
             <p className="selection-meta">
-              Traced shape: {selection?.points.length ?? 0} points · approx.{' '}
+              {selection?.regions.length === 1 ? '1 region' : `${selection?.regions.length ?? 0} regions`}{' '}
+              · {selectionPointCount ?? 0} points · approx.{' '}
               {Math.round(selectionBounds.width)} × {Math.round(selectionBounds.height)} px
             </p>
           )}

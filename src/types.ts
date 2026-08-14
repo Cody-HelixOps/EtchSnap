@@ -11,6 +11,10 @@ export interface SelectionPath {
   closed: boolean
 }
 
+export interface Selection {
+  regions: SelectionPath[]
+}
+
 export type SelectionTool = 'polygon' | 'wand'
 
 export interface GenerateRequest {

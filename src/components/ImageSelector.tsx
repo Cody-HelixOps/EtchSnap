@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Point, SelectionPath, SelectionTool } from '../types'
-import { getPathBounds } from '../lib/imageUtils'
+import type { Point, Selection, SelectionPath, SelectionTool } from '../types'
+import { isValidRegion } from '../lib/imageUtils'
 import { getMagicWandEdgeThreshold, magicWandSelection } from '../lib/magicWand'
 
 interface ImageSelectorProps {
   image: HTMLImageElement | null
-  selection: SelectionPath | null
-  onSelectionChange: (selection: SelectionPath | null) => void
+  selection: Selection | null
+  onSelectionChange: (selection: Selection | null) => void
   onDisplaySizeChange?: (size: { width: number; height: number }) => void
 }
 
 const MIN_POINTS = 3
-const MIN_BOUNDS = 24
 const CLOSE_RADIUS = 14
 
 function distance(a: Point, b: Point): number {
@@ -73,12 +72,6 @@ function drawPath(
   }
 }
 
-function isValidSelection(path: SelectionPath): boolean {
-  if (path.points.length < MIN_POINTS || !path.closed) return false
-  const bounds = getPathBounds(path.points)
-  return bounds.width >= MIN_BOUNDS && bounds.height >= MIN_BOUNDS
-}
-
 export function ImageSelector({
   image,
   selection,
@@ -88,6 +81,7 @@ export function ImageSelector({
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imageDataRef = useRef<ImageData | null>(null)
+  const shiftHeldRef = useRef(false)
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 })
   const [tool, setTool] = useState<SelectionTool>('polygon')
   const [draftPoints, setDraftPoints] = useState<Point[]>([])
@@ -96,9 +90,7 @@ export function ImageSelector({
   const [wandError, setWandError] = useState<string | null>(null)
 
   const isDrawing = tool === 'polygon' && draftPoints.length > 0
-  const activePath: SelectionPath | null = isDrawing
-    ? { points: draftPoints, closed: false }
-    : selection
+  const regionCount = selection?.regions.length ?? 0
 
   const nearStart =
     isDrawing &&
@@ -126,6 +118,22 @@ export function ImageSelector({
   }, [updateDisplaySize])
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Shift') shiftHeldRef.current = true
+    }
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Shift') shiftHeldRef.current = false
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [])
+
+  useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !image || displaySize.width === 0) return
 
@@ -138,16 +146,16 @@ export function ImageSelector({
     ctx.drawImage(image, 0, 0, displaySize.width, displaySize.height)
     imageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-    if (activePath && activePath.points.length > 0) {
-      drawPath(
-        ctx,
-        activePath.points,
-        activePath.closed,
-        isDrawing ? hoverPoint : null,
-        nearStart,
-      )
+    selection?.regions.forEach((region) => {
+      if (region.points.length > 0) {
+        drawPath(ctx, region.points, region.closed)
+      }
+    })
+
+    if (isDrawing && draftPoints.length > 0) {
+      drawPath(ctx, draftPoints, false, hoverPoint, nearStart)
     }
-  }, [image, displaySize, activePath, hoverPoint, isDrawing, nearStart])
+  }, [image, displaySize, selection, draftPoints, hoverPoint, isDrawing, nearStart])
 
   const clampPoint = (x: number, y: number): Point => ({
     x: Math.max(0, Math.min(displaySize.width, x)),
@@ -167,19 +175,29 @@ export function ImageSelector({
     )
   }
 
-  const finalizeShape = (points: Point[]) => {
+  const applyRegion = (closedPath: SelectionPath, append: boolean) => {
+    if (!isValidRegion(closedPath)) {
+      if (!append) onSelectionChange(null)
+      return false
+    }
+
+    if (append && selection?.regions.length) {
+      onSelectionChange({ regions: [...selection.regions, closedPath] })
+    } else {
+      onSelectionChange({ regions: [closedPath] })
+    }
+
+    return true
+  }
+
+  const finalizeShape = (points: Point[], append: boolean) => {
     const closedPath: SelectionPath = { points, closed: true }
     setDraftPoints([])
     setHoverPoint(null)
-
-    if (isValidSelection(closedPath)) {
-      onSelectionChange(closedPath)
-    } else {
-      onSelectionChange(null)
-    }
+    applyRegion(closedPath, append)
   }
 
-  const handleWandClick = (point: Point) => {
+  const handleWandClick = (point: Point, append: boolean) => {
     const imageData = imageDataRef.current
     if (!imageData) {
       setWandError('Could not read the photo pixels. Try uploading again.')
@@ -195,28 +213,27 @@ export function ImageSelector({
       setWandError(
         'Could not detect a bounded surface there. Click the object itself (not the pegboard/background), or adjust sensitivity.',
       )
-      onSelectionChange(null)
+      if (!append) onSelectionChange(null)
       return
     }
 
     const closedPath: SelectionPath = { points, closed: true }
-    if (!isValidSelection(closedPath)) {
+    if (!applyRegion(closedPath, append)) {
       setWandError('That area is too small. Click a larger surface or lower sensitivity.')
-      onSelectionChange(null)
       return
     }
 
     setWandError(null)
-    onSelectionChange(closedPath)
   }
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!image) return
 
     const point = getCanvasPoint(event)
+    const append = event.shiftKey || shiftHeldRef.current
 
     if (tool === 'wand') {
-      handleWandClick(point)
+      handleWandClick(point, append)
       return
     }
 
@@ -224,11 +241,11 @@ export function ImageSelector({
       draftPoints.length >= MIN_POINTS &&
       distance(point, draftPoints[0]) <= CLOSE_RADIUS
     ) {
-      finalizeShape(draftPoints)
+      finalizeShape(draftPoints, append)
       return
     }
 
-    if (selection?.closed && draftPoints.length === 0) {
+    if (regionCount > 0 && draftPoints.length === 0 && !append) {
       onSelectionChange(null)
     }
 
@@ -237,7 +254,7 @@ export function ImageSelector({
 
   const handleFinish = () => {
     if (draftPoints.length >= MIN_POINTS) {
-      finalizeShape(draftPoints)
+      finalizeShape(draftPoints, shiftHeldRef.current)
     }
   }
 
@@ -326,7 +343,7 @@ export function ImageSelector({
               </label>
             )}
             <button type="button" className="ghost-button" onClick={handleClear}>
-              Clear shape
+              Clear {regionCount > 1 ? 'all' : 'selection'}
             </button>
           </div>
           <canvas
@@ -339,12 +356,12 @@ export function ImageSelector({
           />
           <p className="canvas-hint">
             {tool === 'wand'
-              ? 'Click inside the object surface — not the background. Increase sensitivity only if the fill stops too early.'
+              ? 'Click a surface to select it. Hold Shift and click to add another region.'
               : isDrawing
                 ? nearStart
-                  ? ' Click the first point to close the shape.'
-                  : ' Click Finish shape or snap to the first point to close.'
-                : ' Click along the edges to place points — lines connect automatically.'}
+                  ? ' Click the first point to close the shape. Hold Shift while closing to add another region.'
+                  : ' Click Finish shape or snap to the first point to close. Hold Shift to keep existing regions.'
+                : ' Click along the edges to place points. Hold Shift when starting a new shape to add another region.'}
           </p>
           {wandError && tool === 'wand' && <p className="error">{wandError}</p>}
         </>

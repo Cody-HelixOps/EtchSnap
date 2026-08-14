@@ -1,4 +1,4 @@
-import type { OutputMode, Point, SelectionPath } from '../types'
+import type { OutputMode, Point, Selection, SelectionPath } from '../types'
 import { removeFrameBorder, stripOuterEdgePixels } from './borderRemoval'
 import { imageDataToDataUrl, trimImageData } from './trimUtils'
 
@@ -34,21 +34,54 @@ export function getPathBounds(points: Point[]) {
   }
 }
 
+const MIN_SELECTION_POINTS = 3
+const MIN_SELECTION_BOUNDS = 24
+
+export function isValidRegion(path: SelectionPath): boolean {
+  if (path.points.length < MIN_SELECTION_POINTS || !path.closed) return false
+  const bounds = getPathBounds(path.points)
+  return bounds.width >= MIN_SELECTION_BOUNDS && bounds.height >= MIN_SELECTION_BOUNDS
+}
+
+export function isValidSelection(selection: Selection | null): boolean {
+  return !!selection && selection.regions.length > 0 && selection.regions.every(isValidRegion)
+}
+
+export function getSelectionBounds(selection: Selection) {
+  return getPathBounds(selection.regions.flatMap((region) => region.points))
+}
+
 export function cropPathToBase64(
   image: HTMLImageElement,
   path: SelectionPath,
   displayWidth: number,
   displayHeight: number,
 ): { base64: string; mimeType: string } {
+  return cropSelectionToBase64(
+    image,
+    { regions: [path] },
+    displayWidth,
+    displayHeight,
+  )
+}
+
+export function cropSelectionToBase64(
+  image: HTMLImageElement,
+  selection: Selection,
+  displayWidth: number,
+  displayHeight: number,
+): { base64: string; mimeType: string } {
   const scaleX = image.naturalWidth / displayWidth
   const scaleY = image.naturalHeight / displayHeight
 
-  const scaledPoints = path.points.map((point) => ({
-    x: point.x * scaleX,
-    y: point.y * scaleY,
-  }))
+  const scaledRegions = selection.regions.map((region) =>
+    region.points.map((point) => ({
+      x: point.x * scaleX,
+      y: point.y * scaleY,
+    })),
+  )
 
-  const bounds = getPathBounds(scaledPoints)
+  const bounds = getPathBounds(scaledRegions.flat())
   const sw = Math.max(1, Math.ceil(bounds.width))
   const sh = Math.max(1, Math.ceil(bounds.height))
 
@@ -59,13 +92,15 @@ export function cropPathToBase64(
   if (!ctx) throw new Error('Could not create canvas context')
 
   ctx.beginPath()
-  scaledPoints.forEach((point, index) => {
-    const x = point.x - bounds.x
-    const y = point.y - bounds.y
-    if (index === 0) ctx.moveTo(x, y)
-    else ctx.lineTo(x, y)
-  })
-  ctx.closePath()
+  for (const scaledPoints of scaledRegions) {
+    scaledPoints.forEach((point, index) => {
+      const x = point.x - bounds.x
+      const y = point.y - bounds.y
+      if (index === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.closePath()
+  }
   ctx.clip()
 
   ctx.drawImage(image, bounds.x, bounds.y, sw, sh, 0, 0, sw, sh)
