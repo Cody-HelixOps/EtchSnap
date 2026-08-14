@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Point, SelectionPath } from '../types'
+import type { Point, SelectionPath, SelectionTool } from '../types'
 import { getPathBounds } from '../lib/imageUtils'
+import { magicWandSelection } from '../lib/magicWand'
 
 interface ImageSelectorProps {
   image: HTMLImageElement | null
@@ -57,17 +58,19 @@ function drawPath(
     ctx.setLineDash([])
   }
 
-  points.forEach((point, index) => {
-    const isStart = index === 0
-    const radius = isStart && nearStart ? 8 : isStart ? 6 : 4
-    ctx.beginPath()
-    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-    ctx.fillStyle = isStart ? '#c4b5fd' : '#818cf8'
-    ctx.fill()
-    ctx.strokeStyle = '#eef2ff'
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-  })
+  if (!closed) {
+    points.forEach((point, index) => {
+      const isStart = index === 0
+      const radius = isStart && nearStart ? 8 : isStart ? 6 : 4
+      ctx.beginPath()
+      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
+      ctx.fillStyle = isStart ? '#c4b5fd' : '#818cf8'
+      ctx.fill()
+      ctx.strokeStyle = '#eef2ff'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+    })
+  }
 }
 
 function isValidSelection(path: SelectionPath): boolean {
@@ -84,11 +87,15 @@ export function ImageSelector({
 }: ImageSelectorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const imageDataRef = useRef<ImageData | null>(null)
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 })
+  const [tool, setTool] = useState<SelectionTool>('polygon')
   const [draftPoints, setDraftPoints] = useState<Point[]>([])
   const [hoverPoint, setHoverPoint] = useState<Point | null>(null)
+  const [wandTolerance, setWandTolerance] = useState(34)
+  const [wandError, setWandError] = useState<string | null>(null)
 
-  const isDrawing = draftPoints.length > 0
+  const isDrawing = tool === 'polygon' && draftPoints.length > 0
   const activePath: SelectionPath | null = isDrawing
     ? { points: draftPoints, closed: false }
     : selection
@@ -129,6 +136,7 @@ export function ImageSelector({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(image, 0, 0, displaySize.width, displaySize.height)
+    imageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
     if (activePath && activePath.points.length > 0) {
       drawPath(
@@ -165,10 +173,43 @@ export function ImageSelector({
     }
   }
 
+  const handleWandClick = (point: Point) => {
+    const imageData = imageDataRef.current
+    if (!imageData) {
+      setWandError('Could not read the photo pixels. Try uploading again.')
+      return
+    }
+
+    const points = magicWandSelection(imageData, point.x, point.y, {
+      colorTolerance: wandTolerance,
+    })
+
+    if (!points) {
+      setWandError('Could not detect a surface there. Try another spot or adjust sensitivity.')
+      onSelectionChange(null)
+      return
+    }
+
+    const closedPath: SelectionPath = { points, closed: true }
+    if (!isValidSelection(closedPath)) {
+      setWandError('That area is too small. Click a larger surface or lower sensitivity.')
+      onSelectionChange(null)
+      return
+    }
+
+    setWandError(null)
+    onSelectionChange(closedPath)
+  }
+
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!image) return
 
     const point = getCanvasPoint(event)
+
+    if (tool === 'wand') {
+      handleWandClick(point)
+      return
+    }
 
     if (
       draftPoints.length >= MIN_POINTS &&
@@ -198,7 +239,15 @@ export function ImageSelector({
   const handleClear = () => {
     setDraftPoints([])
     setHoverPoint(null)
+    setWandError(null)
     onSelectionChange(null)
+  }
+
+  const handleToolChange = (nextTool: SelectionTool) => {
+    setTool(nextTool)
+    setDraftPoints([])
+    setHoverPoint(null)
+    setWandError(null)
   }
 
   const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -215,47 +264,80 @@ export function ImageSelector({
       {!image ? (
         <div className="image-placeholder">
           <p>Upload a top-down photo to begin</p>
-          <span>Then click around the edges to outline your design area</span>
+          <span>Outline the surface manually or use the magic wand on visible edges</span>
         </div>
       ) : (
         <>
           <div className="selector-toolbar">
-            <button
-              type="button"
-              className="ghost-button"
-              disabled={!isDrawing}
-              onClick={handleUndo}
-            >
-              Undo point
-            </button>
-            <button
-              type="button"
-              className="ghost-button"
-              disabled={draftPoints.length < MIN_POINTS}
-              onClick={handleFinish}
-            >
-              Finish shape
-            </button>
+            <div className="tool-toggle">
+              <button
+                type="button"
+                className={`ghost-button tool-button${tool === 'polygon' ? ' active' : ''}`}
+                onClick={() => handleToolChange('polygon')}
+              >
+                Outline
+              </button>
+              <button
+                type="button"
+                className={`ghost-button tool-button${tool === 'wand' ? ' active' : ''}`}
+                onClick={() => handleToolChange('wand')}
+              >
+                Magic wand
+              </button>
+            </div>
+            {tool === 'polygon' ? (
+              <>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={!isDrawing}
+                  onClick={handleUndo}
+                >
+                  Undo point
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={draftPoints.length < MIN_POINTS}
+                  onClick={handleFinish}
+                >
+                  Finish shape
+                </button>
+              </>
+            ) : (
+              <label className="wand-sensitivity">
+                <span>Sensitivity</span>
+                <input
+                  type="range"
+                  min={12}
+                  max={72}
+                  value={wandTolerance}
+                  onChange={(event) => setWandTolerance(Number(event.target.value))}
+                />
+              </label>
+            )}
             <button type="button" className="ghost-button" onClick={handleClear}>
               Clear shape
             </button>
           </div>
           <canvas
             ref={canvasRef}
-            className="selection-canvas"
+            className={`selection-canvas${tool === 'wand' ? ' wand-cursor' : ''}`}
             style={{ width: displaySize.width, height: displaySize.height }}
             onClick={handleCanvasClick}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
           />
           <p className="canvas-hint">
-            Click along the edges to place points — lines connect automatically.
-            {isDrawing
-              ? nearStart
-                ? ' Click the first point to close the shape.'
-                : ' Click Finish shape or snap to the first point to close.'
-              : ' Start clicking to outline the area.'}
+            {tool === 'wand'
+              ? 'Click inside the surface you want. EtchSnap will follow visible color boundaries.'
+              : isDrawing
+                ? nearStart
+                  ? ' Click the first point to close the shape.'
+                  : ' Click Finish shape or snap to the first point to close.'
+                : ' Click along the edges to place points — lines connect automatically.'}
           </p>
+          {wandError && tool === 'wand' && <p className="error">{wandError}</p>}
         </>
       )}
     </div>

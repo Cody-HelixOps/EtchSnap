@@ -11,6 +11,8 @@ export interface SelectionPath {
   closed: boolean
 }
 
+export type SelectionTool = 'polygon' | 'wand'
+
 export interface GenerateRequest {
   provider: ImageProvider
   apiKey: string
