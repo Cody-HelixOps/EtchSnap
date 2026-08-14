@@ -41,11 +41,25 @@ npm run preview
 
 ## GitHub Pages
 
-This app deploys automatically from `main` via GitHub Actions. The workflow builds the Vite app and publishes the `dist` folder to GitHub Pages.
+The production build outputs to the `docs/` folder, which GitHub Pages serves from the `main` branch.
 
 Live site: https://etchsnap.techjeeper.com
 
-If Pages was previously serving the raw repo (`/src/main.tsx` MIME errors), re-run the **Deploy to GitHub Pages** workflow after merging these changes. In repo settings, set **Pages → Build and deployment → Source** to **GitHub Actions**.
+### One-time GitHub setting
+
+In the repo, open **Settings → Pages** and set:
+
+- **Source:** Deploy from a branch
+- **Branch:** `main`
+- **Folder:** `/docs`
+
+If you previously deployed from repo root, that caused the `/src/main.tsx` MIME error because GitHub was serving source files instead of the built app.
+
+After changing the folder to `/docs`, wait a minute and hard-refresh the site.
+
+### Optional: GitHub Actions deploy
+
+There is also a `.github/workflows/deploy.yml` workflow that can deploy the built `dist` folder via GitHub Actions. To use it, set **Pages → Source** to **GitHub Actions** instead.
 
 ## Notes
 
