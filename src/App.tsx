@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ImageSelector } from './components/ImageSelector'
-import { generateDesign } from './lib/gemini'
+import { generateDesign } from './lib/generateDesign'
 import {
   cropPathToBase64,
   downloadDataUrl,
@@ -9,15 +9,24 @@ import {
   loadImageFromFile,
 } from './lib/imageUtils'
 import { pngToSvg } from './lib/svgUtils'
-import type { OutputMode, SelectionPath } from './types'
+import type { ImageProvider, OutputMode, SelectionPath } from './types'
+import { PROVIDER_OPTIONS } from './types'
 import './App.css'
 
-const API_KEY_STORAGE = 'etchsnap-gemini-api-key'
+const GEMINI_KEY_STORAGE = 'etchsnap-gemini-api-key'
+const OPENAI_KEY_STORAGE = 'etchsnap-openai-api-key'
+const PROVIDER_STORAGE = 'etchsnap-image-provider'
 
 function App() {
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 })
-  const [apiKey, setApiKey] = useState(
-    () => localStorage.getItem(API_KEY_STORAGE) ?? '',
+  const [provider, setProvider] = useState<ImageProvider>(
+    () => (localStorage.getItem(PROVIDER_STORAGE) as ImageProvider) || 'gemini',
+  )
+  const [geminiApiKey, setGeminiApiKey] = useState(
+    () => localStorage.getItem(GEMINI_KEY_STORAGE) ?? '',
+  )
+  const [openaiApiKey, setOpenaiApiKey] = useState(
+    () => localStorage.getItem(OPENAI_KEY_STORAGE) ?? '',
   )
   const [showApiKey, setShowApiKey] = useState(false)
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null)
@@ -29,6 +38,13 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isExportingSvg, setIsExportingSvg] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const providerConfig = useMemo(
+    () => PROVIDER_OPTIONS.find((option) => option.id === provider) ?? PROVIDER_OPTIONS[0],
+    [provider],
+  )
+
+  const apiKey = provider === 'openai' ? openaiApiKey : geminiApiKey
 
   const handleDisplaySizeChange = useCallback(
     (size: { width: number; height: number }) => setDisplaySize(size),
@@ -43,9 +59,21 @@ function App() {
     description.trim().length > 0 &&
     !isGenerating
 
+  const handleProviderChange = (value: ImageProvider) => {
+    setProvider(value)
+    localStorage.setItem(PROVIDER_STORAGE, value)
+    setError(null)
+  }
+
   const handleApiKeyChange = (value: string) => {
-    setApiKey(value)
-    localStorage.setItem(API_KEY_STORAGE, value)
+    if (provider === 'openai') {
+      setOpenaiApiKey(value)
+      localStorage.setItem(OPENAI_KEY_STORAGE, value)
+      return
+    }
+
+    setGeminiApiKey(value)
+    localStorage.setItem(GEMINI_KEY_STORAGE, value)
   }
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,6 +108,7 @@ function App() {
       )
 
       const dataUrl = await generateDesign({
+        provider,
         apiKey: apiKey.trim(),
         croppedImageBase64: base64,
         mimeType,
@@ -135,6 +164,10 @@ function App() {
             describe your design, and download a transparent PNG or vector SVG ready
             for production.
           </p>
+          <p className="privacy-note">
+            Your API key is kept in your browser only — EtchSnap does not send it to any
+            server except the AI provider you choose.
+          </p>
         </div>
       </header>
 
@@ -171,13 +204,30 @@ function App() {
           </div>
 
           <label className="field">
-            <span>Gemini API key</span>
+            <span>Image provider</span>
+            <select
+              className="provider-select"
+              value={provider}
+              onChange={(event) =>
+                handleProviderChange(event.target.value as ImageProvider)
+              }
+            >
+              {PROVIDER_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>{providerConfig.label} API key</span>
             <div className="api-key-row">
               <input
                 type={showApiKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(event) => handleApiKeyChange(event.target.value)}
-                placeholder="AIza..."
+                placeholder={providerConfig.keyPlaceholder}
                 autoComplete="off"
               />
               <button
@@ -189,13 +239,10 @@ function App() {
               </button>
             </div>
             <small>
-              Stored locally in your browser only. Get a key from{' '}
-              <a
-                href="https://aistudio.google.com/apikey"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Google AI Studio
+              Kept in your browser only (localStorage). EtchSnap has no backend and never
+              stores your key on a server. Get a key from{' '}
+              <a href={providerConfig.keyHelpUrl} target="_blank" rel="noreferrer">
+                {providerConfig.keyHelpLabel}
               </a>
               .
             </small>

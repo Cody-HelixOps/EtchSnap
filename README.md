@@ -4,7 +4,7 @@ Turn a top-down photo of any object into a transparent PNG design ready for **UV
 
 ## Features
 
-- Paste your **Gemini API key** (stored locally in the browser)
+- Paste your **Gemini** or **OpenAI / ChatGPT** API key (stored locally in the browser)
 - Upload a top-down photo of your object
 - **Click around the edges** to outline the surface area — lines connect each point
 - Describe the artwork you want
@@ -21,11 +21,16 @@ npm run dev
 
 Open the local URL shown in the terminal (usually `http://localhost:5173`).
 
-## API key
+## Privacy
 
-Get a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
+**Your API key stays in your browser only.** EtchSnap has no backend. Keys are saved in your browser's local storage and are sent only to the AI provider you select (Google Gemini or OpenAI) when you generate a design.
 
-Your key never leaves your browser except when calling Google's Gemini API directly from the app.
+## API keys
+
+- **Gemini:** [Google AI Studio](https://aistudio.google.com/apikey)
+- **OpenAI / ChatGPT:** [OpenAI Platform](https://platform.openai.com/api-keys) (uses `gpt-image-1` via the Images API)
+
+You bring your own key for whichever provider you choose.
 
 ## Production build
 
@@ -36,7 +41,7 @@ npm run preview
 
 ## Notes
 
-- Image generation uses Google's `gemini-2.5-flash-image` model.
+- Image generation uses Google's `gemini-2.5-flash-image` model or OpenAI's `gpt-image-1` model.
 - Laser mode post-processes output to pure black artwork on a transparent background.
 - SVG export vectorizes the generated artwork for laser cutters and design tools.
 - Results depend on your prompt, photo quality, and selection area — iterate for best engraving output.
