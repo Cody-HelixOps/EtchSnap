@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Point, Selection, SelectionPath, SelectionTool } from '../types'
 import { isValidRegion } from '../lib/imageUtils'
 import { getMagicWandEdgeThreshold, magicWandSelection } from '../lib/magicWand'
@@ -18,13 +18,6 @@ const ZOOM_STEP = 0.25
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
-}
-
-function scalePoints(points: Point[], factor: number): Point[] {
-  return points.map((point) => ({
-    x: point.x * factor,
-    y: point.y * factor,
-  }))
 }
 
 function drawPath(
@@ -102,14 +95,8 @@ export function ImageSelector({
 
   const isDrawing = tool === 'polygon' && draftPoints.length > 0
   const regionCount = selection?.regions.length ?? 0
-
-  const canvasSize = useMemo(
-    () => ({
-      width: Math.round(baseDisplaySize.width * zoom),
-      height: Math.round(baseDisplaySize.height * zoom),
-    }),
-    [baseDisplaySize, zoom],
-  )
+  const zoomFrameWidth = Math.round(baseDisplaySize.width * zoom)
+  const zoomFrameHeight = Math.round(baseDisplaySize.height * zoom)
 
   const nearStart =
     isDrawing &&
@@ -157,46 +144,28 @@ export function ImageSelector({
   }, [])
 
   useEffect(() => {
-    if (!image || baseDisplaySize.width === 0) return
-
-    const offscreen = document.createElement('canvas')
-    offscreen.width = baseDisplaySize.width
-    offscreen.height = baseDisplaySize.height
-    const ctx = offscreen.getContext('2d')
-    if (!ctx) return
-
-    ctx.drawImage(image, 0, 0, baseDisplaySize.width, baseDisplaySize.height)
-    imageDataRef.current = ctx.getImageData(0, 0, offscreen.width, offscreen.height)
-  }, [image, baseDisplaySize])
-
-  useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !image || canvasSize.width === 0) return
+    if (!canvas || !image || baseDisplaySize.width === 0) return
 
-    canvas.width = canvasSize.width
-    canvas.height = canvasSize.height
+    canvas.width = baseDisplaySize.width
+    canvas.height = baseDisplaySize.height
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(image, 0, 0, canvasSize.width, canvasSize.height)
+    ctx.drawImage(image, 0, 0, baseDisplaySize.width, baseDisplaySize.height)
+    imageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
     selection?.regions.forEach((region) => {
       if (region.points.length > 0) {
-        drawPath(ctx, scalePoints(region.points, zoom), region.closed)
+        drawPath(ctx, region.points, region.closed)
       }
     })
 
     if (isDrawing && draftPoints.length > 0) {
-      drawPath(
-        ctx,
-        scalePoints(draftPoints, zoom),
-        false,
-        hoverPoint ? { x: hoverPoint.x * zoom, y: hoverPoint.y * zoom } : null,
-        nearStart,
-      )
+      drawPath(ctx, draftPoints, false, hoverPoint, nearStart)
     }
-  }, [image, canvasSize, zoom, selection, draftPoints, hoverPoint, isDrawing, nearStart])
+  }, [image, baseDisplaySize, selection, draftPoints, hoverPoint, isDrawing, nearStart])
 
   const clampPoint = (x: number, y: number): Point => ({
     x: Math.max(0, Math.min(baseDisplaySize.width, x)),
@@ -208,11 +177,13 @@ export function ImageSelector({
   ): Point => {
     const canvas = event.currentTarget
     const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
+    if (rect.width === 0 || rect.height === 0) {
+      return { x: 0, y: 0 }
+    }
+
     return clampPoint(
-      ((event.clientX - rect.left) * scaleX) / zoom,
-      ((event.clientY - rect.top) * scaleY) / zoom,
+      ((event.clientX - rect.left) / rect.width) * baseDisplaySize.width,
+      ((event.clientY - rect.top) / rect.height) * baseDisplaySize.height,
     )
   }
 
@@ -398,6 +369,8 @@ export function ImageSelector({
             <button type="button" className="ghost-button" onClick={handleClear}>
               Clear {regionCount > 1 ? 'all' : 'selection'}
             </button>
+          </div>
+          <div className="selector-toolbar selector-toolbar-secondary">
             <div className="zoom-controls">
               <span>Zoom</span>
               <button
@@ -439,14 +412,29 @@ export function ImageSelector({
             </div>
           </div>
           <div className="canvas-viewport">
-            <canvas
-              ref={canvasRef}
-              className={`selection-canvas${tool === 'wand' ? ' wand-cursor' : ''}`}
-              style={{ width: canvasSize.width, height: canvasSize.height }}
-              onClick={handleCanvasClick}
-              onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
-            />
+            <div
+              className="canvas-zoom-frame"
+              style={{
+                width: zoomFrameWidth,
+                height: zoomFrameHeight,
+              }}
+            >
+              <canvas
+                ref={canvasRef}
+                className={`selection-canvas${tool === 'wand' ? ' wand-cursor' : ''}`}
+                width={baseDisplaySize.width}
+                height={baseDisplaySize.height}
+                style={{
+                  width: baseDisplaySize.width,
+                  height: baseDisplaySize.height,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'top left',
+                }}
+                onClick={handleCanvasClick}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
+              />
+            </div>
           </div>
           <p className="canvas-hint">
             {tool === 'wand'

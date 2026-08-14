@@ -90,6 +90,12 @@
   margin-bottom: 0.65rem;
 }
 
+.selector-toolbar-secondary {
+  margin-top: -0.35rem;
+  margin-bottom: 0.65rem;
+  justify-content: flex-start;
+}
+
 .tool-toggle {
   display: flex;
   gap: 0.35rem;
@@ -144,14 +150,15 @@
 
 .canvas-viewport {
   overflow: auto;
-  max-width: 100%;
+  width: 100%;
   max-height: min(70vh, 720px);
   border-radius: 0.85rem;
   background: rgba(0, 0, 0, 0.18);
 }
 
-.selection-canvas.wand-cursor {
-  cursor: cell;
+.canvas-zoom-frame {
+  position: relative;
+  overflow: hidden;
 }
 
 .selection-canvas {
@@ -159,6 +166,11 @@
   border-radius: 0.85rem;
   cursor: crosshair;
   touch-action: none;
+  will-change: transform;
+}
+
+.selection-canvas.wand-cursor {
+  cursor: cell;
 }
 
 .download-actions {
