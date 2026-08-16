@@ -1,5 +1,6 @@
 import type { OutputMode, Point, Selection, SelectionPath } from '../types'
 import { removeFrameBorder, stripOuterEdgePixels } from './borderRemoval'
+import { isolateArtwork } from './isolateArtwork'
 import { imageDataToDataUrl, trimImageData } from './trimUtils'
 
 export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
@@ -134,6 +135,7 @@ export function downloadText(content: string, filename: string, mimeType: string
 export async function postProcessDesign(
   base64: string,
   mode: OutputMode,
+  sourceBase64?: string,
 ): Promise<string> {
   const img = await loadImageFromBase64(base64)
   const canvas = document.createElement('canvas')
@@ -144,6 +146,30 @@ export async function postProcessDesign(
 
   ctx.drawImage(img, 0, 0)
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+
+  let sourceImageData: ImageData | null = null
+  if (sourceBase64) {
+    try {
+      const sourceImage = await loadImageFromBase64(sourceBase64)
+      const sourceCanvas = document.createElement('canvas')
+      sourceCanvas.width = sourceImage.naturalWidth
+      sourceCanvas.height = sourceImage.naturalHeight
+      const sourceCtx = sourceCanvas.getContext('2d')
+      if (sourceCtx) {
+        sourceCtx.drawImage(sourceImage, 0, 0)
+        sourceImageData = sourceCtx.getImageData(
+          0,
+          0,
+          sourceCanvas.width,
+          sourceCanvas.height,
+        )
+      }
+    } catch {
+      sourceImageData = null
+    }
+  }
+
+  isolateArtwork(imageData, sourceImageData)
 
   for (let pass = 0; pass < 3; pass += 1) {
     if (!removeFrameBorder(imageData)) break

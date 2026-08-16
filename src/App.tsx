@@ -573,14 +573,6 @@ function App() {
             <h2>3. Download</h2>
             {resultDataUrl && (
               <div className="download-actions">
-                <button
-                  type="button"
-                  className={`ghost-button${showObject ? ' active' : ''}`}
-                  onClick={() => setShowObject((v) => !v)}
-                  title="Toggle preview with original object underneath"
-                >
-                  {showObject ? 'Hide Object' : 'Show Object'}
-                </button>
                 <button type="button" className="ghost-button" onClick={handleDownloadPng}>
                   Download PNG
                 </button>
@@ -595,6 +587,24 @@ function App() {
               </div>
             )}
           </div>
+
+          {resultDataUrl && (
+            <div className="result-preview-bar">
+              <label className="overlay-toggle">
+                <input
+                  type="checkbox"
+                  checked={showObject}
+                  disabled={!croppedSourceDataUrl}
+                  onChange={() => setShowObject((value) => !value)}
+                />
+                <span className="switch" aria-hidden="true" />
+                Show original object behind design
+              </label>
+              <span className="result-preview-note">
+                Preview only — PNG and SVG downloads stay design-only.
+              </span>
+            </div>
+          )}
 
           <div className="result-frame">
             {resultDataUrl ? (

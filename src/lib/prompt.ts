@@ -40,6 +40,7 @@ export function buildPrompt(
   description: string,
   mode: OutputMode,
   complexity: number,
+  aspectRatio?: string,
 ): string {
   const modeInstructions =
     mode === 'uv'
@@ -48,28 +49,32 @@ Keep rich color detail and clean edges.`
       : `Use ONLY pure black (#000000) for all visible design pixels.
 No gray, no gradients, no color — high-contrast artwork suitable for laser engraving.`
 
-  return `You are creating printable artwork to be overlaid on a physical object surface.
+  const aspectLine = aspectRatio
+    ? `Canvas aspect ratio: ${aspectRatio}. Compose the artwork to fit this shape.`
+    : `Keep the design centered and sized to fit the canvas naturally.`
 
-The attached image shows the exact surface region where the design will be printed or engraved.
-It is provided ONLY as a size and shape reference — do NOT reproduce, trace, or include any part of the object, product, or surface in your output.
+  return `You are creating standalone printable artwork: a decal / UV print / engraving graphic.
+
+This is NOT a product mockup. The output will be printed or engraved onto a real object later.
 
 Design request: ${description}
 
 ${buildComplexityInstructions(complexity)}
 
+${aspectLine}
+
 Output requirements:
-- Return ONLY the decorative design artwork itself — pure artwork, nothing else
+- Return ONLY the decorative design artwork itself — pure graphic artwork, nothing else
 - Place the design on a fully transparent background (alpha channel = 0 everywhere there is no artwork)
-- CRITICAL: Do NOT render the physical object, product, packaging, or any surface element from the reference image
-- CRITICAL: Do NOT include any photograph, product image, real-world object, or photo-realistic element
-- Do NOT include any surface texture, material, shadow, reflection, or background from the reference photo
+- CRITICAL: Do NOT depict any physical object, product, packaging, phone, case, tumbler, card, wood, metal, fabric, or photograph
+- CRITICAL: Do NOT show the artwork applied onto an item, mockup, or real-world surface
+- Do NOT include surface texture, material, shadow, reflection, table, background scenery, or a filled backing plate
 - Do NOT add any border, frame, outline, edge decoration, or rectangular boundary around the design
 - Do NOT add a stroke or box around the artwork — the design should fade cleanly to transparent at the edges
 - Do NOT draw lines that touch or follow the outer edge of the canvas
 - Leave clear transparent margin between the artwork and all four image edges
 - Scale the artwork to fill most of the canvas — avoid large empty areas above, below, or beside the design
 - The design must not form a closed rectangle around the perimeter of the image
-- Match the perspective and proportions of the selected surface area
-- Keep the design centered and sized to fit the region naturally with padding inside the canvas
+- Keep the design centered with padding inside the canvas
 - ${modeInstructions}`
 }

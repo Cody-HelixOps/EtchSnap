@@ -1,31 +1,33 @@
 import { GoogleGenAI, Modality } from '@google/genai'
 import type { GenerateRequest } from '../types'
-import { postProcessDesign } from './imageUtils'
+import { pickGeminiAspectRatio, describeAspectRatio } from './aspectRatio'
+import { base64ToDataUrl, loadImageFromDataUrl, postProcessDesign } from './imageUtils'
 import { buildPrompt } from './prompt'
 
 export async function generateDesignWithGemini(
   request: GenerateRequest,
 ): Promise<string> {
+  const reference = await loadImageFromDataUrl(
+    base64ToDataUrl(request.croppedImageBase64, request.mimeType),
+  )
+  const aspectRatio = pickGeminiAspectRatio(
+    reference.naturalWidth,
+    reference.naturalHeight,
+  )
+
   const ai = new GoogleGenAI({ apiKey: request.apiKey })
 
   const response = await ai.models.generateContent({
     model: request.imageModel,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          {
-            inlineData: {
-              mimeType: request.mimeType,
-              data: request.croppedImageBase64,
-            },
-          },
-          { text: buildPrompt(request.description, request.mode, request.complexity) },
-        ],
-      },
-    ],
+    contents: buildPrompt(
+      request.description,
+      request.mode,
+      request.complexity,
+      describeAspectRatio(reference.naturalWidth, reference.naturalHeight),
+    ),
     config: {
       responseModalities: [Modality.TEXT, Modality.IMAGE],
+      imageConfig: { aspectRatio },
     },
   })
 
@@ -40,5 +42,9 @@ export async function generateDesignWithGemini(
     )
   }
 
-  return postProcessDesign(imagePart.inlineData.data, request.mode)
+  return postProcessDesign(
+    imagePart.inlineData.data,
+    request.mode,
+    request.croppedImageBase64,
+  )
 }

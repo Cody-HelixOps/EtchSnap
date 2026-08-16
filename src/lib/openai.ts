@@ -1,4 +1,5 @@
 import type { GenerateRequest } from '../types'
+import { describeAspectRatio } from './aspectRatio'
 import { base64ToDataUrl, loadImageFromDataUrl, postProcessDesign } from './imageUtils'
 import { buildPrompt } from './prompt'
 
@@ -28,26 +29,37 @@ export async function generateDesignWithOpenAI(
     base64ToDataUrl(request.croppedImageBase64, request.mimeType),
   )
 
-  const bytes = Uint8Array.from(atob(request.croppedImageBase64), (char) =>
-    char.charCodeAt(0),
+  const prompt = buildPrompt(
+    request.description,
+    request.mode,
+    request.complexity,
+    describeAspectRatio(reference.naturalWidth, reference.naturalHeight),
   )
-  const imageBlob = new Blob([bytes], { type: request.mimeType })
+  const size = pickOpenAiSize(reference.naturalWidth, reference.naturalHeight)
+  const usesGptImage = /gpt-image/i.test(request.imageModel)
 
-  const form = new FormData()
-  form.append('model', request.imageModel)
-  form.append('image', imageBlob, 'surface-region.png')
-  form.append('prompt', buildPrompt(request.description, request.mode, request.complexity))
-  form.append('background', 'transparent')
-  form.append('output_format', 'png')
-  form.append('quality', 'high')
-  form.append('size', pickOpenAiSize(reference.naturalWidth, reference.naturalHeight))
+  const body: Record<string, unknown> = {
+    model: request.imageModel,
+    prompt,
+    size,
+    n: 1,
+  }
 
-  const response = await fetch('https://api.openai.com/v1/images/edits', {
+  if (usesGptImage) {
+    body.background = 'transparent'
+    body.output_format = 'png'
+    body.quality = 'high'
+  } else {
+    body.response_format = 'b64_json'
+  }
+
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${request.apiKey}`,
+      'Content-Type': 'application/json',
     },
-    body: form,
+    body: JSON.stringify(body),
   })
 
   const payload = (await response.json()) as OpenAiImageResponse & OpenAiErrorResponse
@@ -64,5 +76,5 @@ export async function generateDesignWithOpenAI(
     throw new Error('OpenAI did not return an image. Try adjusting your description or selection.')
   }
 
-  return postProcessDesign(rawBase64, request.mode)
+  return postProcessDesign(rawBase64, request.mode, request.croppedImageBase64)
 }
