@@ -83,6 +83,8 @@ function App() {
   })
   const [mode, setMode] = useState<OutputMode>('uv')
   const [resultDataUrl, setResultDataUrl] = useState<string | null>(null)
+  const [croppedSourceDataUrl, setCroppedSourceDataUrl] = useState<string | null>(null)
+  const [showObject, setShowObject] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isEnhancing, setIsEnhancing] = useState(false)
   const [isExportingSvg, setIsExportingSvg] = useState(false)
@@ -294,6 +296,8 @@ function App() {
     setIsGenerating(true)
     setError(null)
     setResultDataUrl(null)
+    setCroppedSourceDataUrl(null)
+    setShowObject(false)
 
     try {
       const { base64, mimeType } = cropSelectionToBase64(
@@ -302,6 +306,9 @@ function App() {
         displaySize.width,
         displaySize.height,
       )
+
+      const croppedUrl = `data:${mimeType};base64,${base64}`
+      setCroppedSourceDataUrl(croppedUrl)
 
       const dataUrl = await generateDesign({
         provider,
@@ -566,6 +573,14 @@ function App() {
             <h2>3. Download</h2>
             {resultDataUrl && (
               <div className="download-actions">
+                <button
+                  type="button"
+                  className={`ghost-button${showObject ? ' active' : ''}`}
+                  onClick={() => setShowObject((v) => !v)}
+                  title="Toggle preview with original object underneath"
+                >
+                  {showObject ? 'Hide Object' : 'Show Object'}
+                </button>
                 <button type="button" className="ghost-button" onClick={handleDownloadPng}>
                   Download PNG
                 </button>
@@ -583,7 +598,20 @@ function App() {
 
           <div className="result-frame">
             {resultDataUrl ? (
-              <img src={resultDataUrl} alt="Generated design preview" />
+              <div className="result-composite">
+                {showObject && croppedSourceDataUrl && (
+                  <img
+                    className="result-source-layer"
+                    src={croppedSourceDataUrl}
+                    alt="Original object"
+                  />
+                )}
+                <img
+                  className="result-design-layer"
+                  src={resultDataUrl}
+                  alt="Generated design preview"
+                />
+              </div>
             ) : (
               <div className="result-placeholder">
                 <p>Your transparent design preview will appear here.</p>
