@@ -48,18 +48,21 @@ Keep rich color detail and clean edges.`
       : `Use ONLY pure black (#000000) for all visible design pixels.
 No gray, no gradients, no color — high-contrast artwork suitable for laser engraving.`
 
-  return `You are creating printable artwork for a top-down photo of a physical object surface.
+  return `You are creating printable artwork to be overlaid on a physical object surface.
 
-The attached image shows the exact surface region where the design will be applied.
+The attached image shows the exact surface region where the design will be printed or engraved.
+It is provided ONLY as a size and shape reference — do NOT reproduce, trace, or include any part of the object, product, or surface in your output.
 
 Design request: ${description}
 
 ${buildComplexityInstructions(complexity)}
 
 Output requirements:
-- Return ONLY the decorative design artwork itself
-- Place the design on a fully transparent background (alpha channel)
-- Do NOT include the object, surface texture, shadows, or photo background
+- Return ONLY the decorative design artwork itself — pure artwork, nothing else
+- Place the design on a fully transparent background (alpha channel = 0 everywhere there is no artwork)
+- CRITICAL: Do NOT render the physical object, product, packaging, or any surface element from the reference image
+- CRITICAL: Do NOT include any photograph, product image, real-world object, or photo-realistic element
+- Do NOT include any surface texture, material, shadow, reflection, or background from the reference photo
 - Do NOT add any border, frame, outline, edge decoration, or rectangular boundary around the design
 - Do NOT add a stroke or box around the artwork — the design should fade cleanly to transparent at the edges
 - Do NOT draw lines that touch or follow the outer edge of the canvas
