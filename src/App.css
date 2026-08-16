@@ -491,6 +491,10 @@
 }
 
 .result-design-layer {
+  display: block;
+}
+
+.result-composite.has-source .result-design-layer {
   position: absolute;
   inset: 0;
   width: 100%;

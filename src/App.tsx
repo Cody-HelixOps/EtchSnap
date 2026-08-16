@@ -598,7 +598,7 @@ function App() {
 
           <div className="result-frame">
             {resultDataUrl ? (
-              <div className="result-composite">
+              <div className={`result-composite${showObject && croppedSourceDataUrl ? ' has-source' : ''}`}>
                 {showObject && croppedSourceDataUrl && (
                   <img
                     className="result-source-layer"
