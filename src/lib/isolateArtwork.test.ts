@@ -118,12 +118,82 @@ function testFullCanvasWhiteBackground(): void {
   assert(bg.a < 20, 'full-canvas white background should be removed')
 }
 
+function paintCheckerboard(
+  image: PixelImage,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  size: number,
+  light: [number, number, number],
+  dark: [number, number, number],
+): void {
+  for (let py = y; py < y + height; py += 1) {
+    for (let px = x; px < x + width; px += 1) {
+      const cellX = Math.floor((px - x) / size)
+      const cellY = Math.floor((py - y) / size)
+      const color = (cellX + cellY) % 2 === 0 ? light : dark
+      const index = (py * image.width + px) * 4
+      image.data[index] = color[0]
+      image.data[index + 1] = color[1]
+      image.data[index + 2] = color[2]
+      image.data[index + 3] = 255
+    }
+  }
+}
+
+function testFakeTransparencyGridRemoved(): void {
+  const image = createImage(128, 96)
+  paintCheckerboard(image, 24, 32, 80, 48, 8, [248, 248, 248], [198, 198, 198])
+  fillRect(image, 48, 12, 28, 28, 186, 112, 42)
+  fillRect(image, 54, 44, 16, 22, 32, 28, 24)
+
+  isolateArtwork(image)
+
+  const art = sample(image, 60, 24)
+  const gondola = sample(image, 60, 52)
+  const grid = sample(image, 28, 36)
+  const gridGap = sample(image, 40, 50)
+  assert(art.a > 200 && art.r > 150, 'bronze artwork should remain')
+  assert(gondola.a > 200 && gondola.r < 50, 'dark overlapping gondola should remain')
+  assert(grid.a < 20, 'fake transparency checkerboard should be removed')
+  assert(gridGap.a < 20, 'checkerboard in interior gaps should be removed')
+}
+
+function testColorfulCheckerDesignKept(): void {
+  const image = createImage(96, 64)
+  paintCheckerboard(image, 16, 8, 64, 48, 8, [210, 30, 40], [20, 20, 20])
+
+  isolateArtwork(image)
+
+  const red = sample(image, 20, 12)
+  const black = sample(image, 28, 12)
+  assert(red.a > 200 && red.r > 180, 'red chess squares should remain')
+  assert(black.a > 200 && black.r < 40, 'black chess squares should remain')
+}
+
+function testOffsetSubtleTransparencyGrid(): void {
+  const image = createImage(140, 100)
+  paintCheckerboard(image, 19, 23, 96, 56, 8, [244, 244, 246], [218, 219, 221])
+  fillRect(image, 50, 8, 24, 24, 168, 98, 38)
+
+  isolateArtwork(image)
+
+  const art = sample(image, 58, 16)
+  const grid = sample(image, 27, 31)
+  assert(art.a > 200 && art.r > 140, 'artwork beside a subtle grid should remain')
+  assert(grid.a < 20, 'misaligned light-gray transparency grid should be removed')
+}
+
 const tests = [
   ['white plate with red design', testWhitePlateWithRedDesign],
   ['transparent design unchanged', testTransparentDesignUnchanged],
   ['source subtraction keeps artwork', testSourceSubtractionKeepsArtwork],
   ['white artwork on white object kept', testWhiteArtworkOnWhiteObjectKept],
   ['full canvas white background', testFullCanvasWhiteBackground],
+  ['fake transparency grid removed', testFakeTransparencyGridRemoved],
+  ['colorful checker design kept', testColorfulCheckerDesignKept],
+  ['offset subtle transparency grid', testOffsetSubtleTransparencyGrid],
 ] as const
 
 let failed = 0

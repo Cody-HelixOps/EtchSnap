@@ -68,6 +68,8 @@ Output requirements:
 - Place the design on a fully transparent background (alpha channel = 0 everywhere there is no artwork)
 - CRITICAL: Do NOT depict any physical object, product, packaging, phone, case, tumbler, card, wood, metal, fabric, or photograph
 - CRITICAL: Do NOT show the artwork applied onto an item, mockup, or real-world surface
+- NEVER draw a checkerboard, gray/white grid, or any "transparent background" pattern
+- Empty regions AND holes inside the artwork (gaps between parts) must be actual transparent pixels (alpha 0), not a painted grid, gray fill, or placeholder texture
 - Do NOT include surface texture, material, shadow, reflection, table, background scenery, or a filled backing plate
 - Do NOT add any border, frame, outline, edge decoration, or rectangular boundary around the design
 - Do NOT add a stroke or box around the artwork — the design should fade cleanly to transparent at the edges
