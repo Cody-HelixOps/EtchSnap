@@ -26,6 +26,7 @@ export interface GenerateRequest {
   description: string
   mode: OutputMode
   complexity: number
+  partCount?: number
 }
 
 export interface EnhanceDescriptionRequest {

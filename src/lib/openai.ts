@@ -34,6 +34,7 @@ export async function generateDesignWithOpenAI(
     request.mode,
     request.complexity,
     describeAspectRatio(reference.naturalWidth, reference.naturalHeight),
+    request.partCount ?? 1,
   )
   const size = pickOpenAiSize(reference.naturalWidth, reference.naturalHeight)
   const usesGptImage = /gpt-image/i.test(request.imageModel)

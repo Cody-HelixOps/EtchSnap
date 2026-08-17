@@ -24,6 +24,7 @@ export async function generateDesignWithGemini(
       request.mode,
       request.complexity,
       describeAspectRatio(reference.naturalWidth, reference.naturalHeight),
+      request.partCount ?? 1,
     ),
     config: {
       responseModalities: [Modality.TEXT, Modality.IMAGE],

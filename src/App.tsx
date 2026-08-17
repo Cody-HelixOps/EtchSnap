@@ -16,7 +16,7 @@ import {
   getDefaultOpenAiTextModel,
 } from './lib/openaiModels'
 import {
-  cropSelectionToBase64,
+  cropPathToBase64,
   downloadDataUrl,
   downloadText,
   getSelectionBounds,
@@ -24,6 +24,7 @@ import {
   isValidSelection,
   loadImageFromFile,
 } from './lib/imageUtils'
+import { buildOverlayRegions, getLargestRegion, type OverlayRegion } from './lib/selectionLayout'
 import { pngToSvg } from './lib/svgUtils'
 import { getComplexityLabel } from './lib/prompt'
 import {
@@ -85,12 +86,7 @@ function App() {
   const [mode, setMode] = useState<OutputMode>('uv')
   const [resultDataUrl, setResultDataUrl] = useState<string | null>(null)
   const [overlaySourceUrl, setOverlaySourceUrl] = useState<string | null>(null)
-  const [overlayRect, setOverlayRect] = useState<{
-    x: number
-    y: number
-    width: number
-    height: number
-  } | null>(null)
+  const [overlayRegions, setOverlayRegions] = useState<OverlayRegion[]>([])
   const [showObject, setShowObject] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isEnhancing, setIsEnhancing] = useState(false)
@@ -266,7 +262,7 @@ function App() {
       setSelection(null)
       setResultDataUrl(null)
       setOverlaySourceUrl(null)
-      setOverlayRect(null)
+      setOverlayRegions([])
       setShowObject(false)
       setError(null)
     } catch {
@@ -307,24 +303,19 @@ function App() {
     setError(null)
     setResultDataUrl(null)
     setOverlaySourceUrl(null)
-    setOverlayRect(null)
+    setOverlayRegions([])
     setShowObject(false)
 
     try {
-      const { base64, mimeType } = cropSelectionToBase64(
+      const primaryRegion = getLargestRegion(selection)
+      const { base64, mimeType } = cropPathToBase64(
         sourceImage,
-        selection,
+        primaryRegion,
         displaySize.width,
         displaySize.height,
       )
 
-      const bounds = getSelectionBounds(selection)
-      setOverlayRect({
-        x: bounds.x / displaySize.width,
-        y: bounds.y / displaySize.height,
-        width: bounds.width / displaySize.width,
-        height: bounds.height / displaySize.height,
-      })
+      setOverlayRegions(buildOverlayRegions(selection, displaySize.width, displaySize.height))
       setOverlaySourceUrl(imageToDataUrl(sourceImage))
 
       const dataUrl = await generateDesign({
@@ -336,6 +327,7 @@ function App() {
         description: description.trim(),
         mode,
         complexity,
+        partCount: selection.regions.length,
       })
 
       setResultDataUrl(dataUrl)
@@ -611,7 +603,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={showObject}
-                  disabled={!overlaySourceUrl || !overlayRect}
+                  disabled={!overlaySourceUrl || overlayRegions.length === 0}
                   onChange={() => setShowObject((value) => !value)}
                 />
                 <span className="switch" aria-hidden="true" />
@@ -626,30 +618,38 @@ function App() {
           <div className="result-frame">
             {resultDataUrl ? (
               <div
-                className={`result-composite${showObject && overlaySourceUrl && overlayRect ? ' has-source' : ''}`}
+                className={`result-composite${showObject && overlaySourceUrl && overlayRegions.length > 0 ? ' has-source' : ''}`}
               >
-                {showObject && overlaySourceUrl && overlayRect && (
+                {showObject && overlaySourceUrl && overlayRegions.length > 0 && (
                   <img
                     className="result-source-layer"
                     src={overlaySourceUrl}
                     alt="Original photo"
                   />
                 )}
-                <img
-                  className="result-design-layer"
-                  src={resultDataUrl}
-                  alt="Generated design preview"
-                  style={
-                    showObject && overlayRect
-                      ? {
-                          left: `${overlayRect.x * 100}%`,
-                          top: `${overlayRect.y * 100}%`,
-                          width: `${overlayRect.width * 100}%`,
-                          height: `${overlayRect.height * 100}%`,
-                        }
-                      : undefined
-                  }
-                />
+                {showObject && overlayRegions.length > 0
+                  ? overlayRegions.map((region, index) => (
+                      <img
+                        key={`${region.x}-${region.y}-${index}`}
+                        className="result-design-layer"
+                        src={resultDataUrl}
+                        alt=""
+                        style={{
+                          left: `${region.x * 100}%`,
+                          top: `${region.y * 100}%`,
+                          width: `${region.width * 100}%`,
+                          height: `${region.height * 100}%`,
+                          clipPath: region.clipPath,
+                        }}
+                      />
+                    ))
+                  : (
+                      <img
+                        className="result-design-layer"
+                        src={resultDataUrl}
+                        alt="Generated design preview"
+                      />
+                    )}
               </div>
             ) : (
               <div className="result-placeholder">

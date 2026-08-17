@@ -42,6 +42,7 @@ export function buildPrompt(
   mode: OutputMode,
   complexity: number,
   aspectRatio?: string,
+  partCount = 1,
 ): string {
   const modeInstructions =
     mode === 'uv'
@@ -57,6 +58,11 @@ CRITICAL: This is a laser decal for a selected surface, not a square logo. The b
     ? `Canvas / selected region: ${aspectRatio}`
     : `Fill the canvas. Match the selected region's shape — do not default to a square composition.`
 
+  const partLine =
+    partCount > 1
+      ? `This artwork will be stamped separately onto ${partCount} similar parts. Compose ONE design that fills a single part. Do not draw multiple copies, and do not span a gap between parts.`
+      : ''
+
   return `You are creating standalone printable artwork: a decal / UV print / engraving graphic.
 
 This is NOT a product mockup. The output will be printed or engraved onto a real object later.
@@ -66,6 +72,7 @@ Design request: ${description}
 ${buildComplexityInstructions(complexity)}
 
 ${aspectLine}
+${partLine}
 
 Output requirements:
 - Return ONLY the decorative design artwork itself — pure graphic artwork, nothing else

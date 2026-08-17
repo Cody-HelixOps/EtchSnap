@@ -568,6 +568,7 @@
   max-height: none;
   object-fit: fill;
   pointer-events: none;
+  z-index: 1;
 }
 
 .error {
