@@ -20,6 +20,7 @@ import {
   downloadDataUrl,
   downloadText,
   getSelectionBounds,
+  imageToDataUrl,
   isValidSelection,
   loadImageFromFile,
 } from './lib/imageUtils'
@@ -83,7 +84,13 @@ function App() {
   })
   const [mode, setMode] = useState<OutputMode>('uv')
   const [resultDataUrl, setResultDataUrl] = useState<string | null>(null)
-  const [croppedSourceDataUrl, setCroppedSourceDataUrl] = useState<string | null>(null)
+  const [overlaySourceUrl, setOverlaySourceUrl] = useState<string | null>(null)
+  const [overlayRect, setOverlayRect] = useState<{
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null>(null)
   const [showObject, setShowObject] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isEnhancing, setIsEnhancing] = useState(false)
@@ -258,6 +265,9 @@ function App() {
       setFileName(file.name)
       setSelection(null)
       setResultDataUrl(null)
+      setOverlaySourceUrl(null)
+      setOverlayRect(null)
+      setShowObject(false)
       setError(null)
     } catch {
       setError('Could not load that image. Try a JPG or PNG file.')
@@ -296,7 +306,8 @@ function App() {
     setIsGenerating(true)
     setError(null)
     setResultDataUrl(null)
-    setCroppedSourceDataUrl(null)
+    setOverlaySourceUrl(null)
+    setOverlayRect(null)
     setShowObject(false)
 
     try {
@@ -307,8 +318,14 @@ function App() {
         displaySize.height,
       )
 
-      const croppedUrl = `data:${mimeType};base64,${base64}`
-      setCroppedSourceDataUrl(croppedUrl)
+      const bounds = getSelectionBounds(selection)
+      setOverlayRect({
+        x: bounds.x / displaySize.width,
+        y: bounds.y / displaySize.height,
+        width: bounds.width / displaySize.width,
+        height: bounds.height / displaySize.height,
+      })
+      setOverlaySourceUrl(imageToDataUrl(sourceImage))
 
       const dataUrl = await generateDesign({
         provider,
@@ -594,11 +611,11 @@ function App() {
                 <input
                   type="checkbox"
                   checked={showObject}
-                  disabled={!croppedSourceDataUrl}
+                  disabled={!overlaySourceUrl || !overlayRect}
                   onChange={() => setShowObject((value) => !value)}
                 />
                 <span className="switch" aria-hidden="true" />
-                Show original object behind design
+                Show original photo behind design
               </label>
               <span className="result-preview-note">
                 Preview only — PNG and SVG downloads stay design-only.
@@ -608,18 +625,30 @@ function App() {
 
           <div className="result-frame">
             {resultDataUrl ? (
-              <div className={`result-composite${showObject && croppedSourceDataUrl ? ' has-source' : ''}`}>
-                {showObject && croppedSourceDataUrl && (
+              <div
+                className={`result-composite${showObject && overlaySourceUrl && overlayRect ? ' has-source' : ''}`}
+              >
+                {showObject && overlaySourceUrl && overlayRect && (
                   <img
                     className="result-source-layer"
-                    src={croppedSourceDataUrl}
-                    alt="Original object"
+                    src={overlaySourceUrl}
+                    alt="Original photo"
                   />
                 )}
                 <img
                   className="result-design-layer"
                   src={resultDataUrl}
                   alt="Generated design preview"
+                  style={
+                    showObject && overlayRect
+                      ? {
+                          left: `${overlayRect.x * 100}%`,
+                          top: `${overlayRect.y * 100}%`,
+                          width: `${overlayRect.width * 100}%`,
+                          height: `${overlayRect.height * 100}%`,
+                        }
+                      : undefined
+                  }
                 />
               </div>
             ) : (

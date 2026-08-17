@@ -20,6 +20,22 @@ export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   })
 }
 
+export function imageToDataUrl(
+  image: HTMLImageElement,
+  mimeType = 'image/jpeg',
+  quality = 0.92,
+): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Could not create canvas context')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(image, 0, 0)
+  return canvas.toDataURL(mimeType, quality)
+}
+
 export function getPathBounds(points: Point[]) {
   const xs = points.map((point) => point.x)
   const ys = points.map((point) => point.y)
