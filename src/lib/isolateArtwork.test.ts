@@ -216,6 +216,22 @@ function testLaserBlackFillsStaySolid(): void {
   assert(bg.a < 20, 'magenta background around laser art should be removed')
 }
 
+function testGeminiRosePinkBackgroundRemoved(): void {
+  const image = createImage(120, 90)
+  fillRect(image, 0, 0, 120, 90, 209, 35, 116)
+  fillRect(image, 28, 16, 64, 58, 8, 8, 8)
+  fillRect(image, 48, 32, 22, 22, 209, 35, 116)
+
+  isolateArtwork(image)
+
+  const fill = sample(image, 36, 24)
+  const hole = sample(image, 56, 40)
+  const bg = sample(image, 4, 4)
+  assert(fill.a > 200 && fill.r < 20, 'black artwork on Gemini rose-pink must stay solid')
+  assert(hole.a < 20, 'rose-pink interior holes must be keyed out')
+  assert(bg.a < 20, 'Gemini rose-pink background must be keyed out')
+}
+
 function testDarkUvBodyStaysSolid(): void {
   const image = createImage(100, 80)
   fillRect(image, 0, 0, 100, 80, 255, 0, 255)
@@ -241,6 +257,7 @@ const tests = [
   ['colorful checker design kept', testColorfulCheckerDesignKept],
   ['detailed artwork not grid punched', testDetailedArtworkNotGridPunched],
   ['laser black fills stay solid', testLaserBlackFillsStaySolid],
+  ['gemini rose-pink background removed', testGeminiRosePinkBackgroundRemoved],
   ['dark uv body stays solid', testDarkUvBodyStaysSolid],
 ] as const
 

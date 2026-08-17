@@ -1,4 +1,8 @@
-import { isChromaKeyColor, removeChromaKey } from './chromaKey.ts'
+import {
+  isChromaKeyColor,
+  removeChromaKey,
+  removeDetectedSolidBackground,
+} from './chromaKey.ts'
 
 export interface PixelImage {
   data: Uint8ClampedArray
@@ -355,7 +359,8 @@ export function isolateArtwork(
 ): PixelImage {
   const work = clonePixels(generated)
   const canvas = work.width * work.height
-  const keyed = removeChromaKey(work)
+  const keyed =
+    removeChromaKey(work) + removeDetectedSolidBackground(work)
   const chromaWorked = keyed >= Math.max(400, canvas * 0.08)
 
   if (chromaWorked) {

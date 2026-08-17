@@ -1,5 +1,6 @@
 import type { OutputMode, Point, Selection, SelectionPath } from '../types'
 import { removeFrameBorder, stripOuterEdgePixels } from './borderRemoval'
+import { isChromaKeyColor, isMagentaFamily } from './chromaKey'
 import { isolateArtwork } from './isolateArtwork'
 import { imageDataToDataUrl, trimImageData } from './trimUtils'
 
@@ -197,6 +198,10 @@ export async function postProcessDesign(
     }
 
     if (mode === 'laser') {
+      if (isMagentaFamily(r, g, b) || isChromaKeyColor(r, g, b)) {
+        data[i + 3] = 0
+        continue
+      }
       const ink = luminance < 140 ? 0 : 255
       data[i] = ink
       data[i + 1] = ink
