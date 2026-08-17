@@ -1,4 +1,5 @@
 import type { OutputMode } from '../types'
+import { CHROMA_KEY } from './chromaKey.ts'
 
 export function getComplexityLabel(complexity: number): string {
   if (complexity <= 20) return 'Simple'
@@ -65,18 +66,18 @@ ${aspectLine}
 
 Output requirements:
 - Return ONLY the decorative design artwork itself — pure graphic artwork, nothing else
-- Place the design on a fully transparent background (alpha channel = 0 everywhere there is no artwork)
+- Put the artwork on a perfectly uniform solid background of exactly ${CHROMA_KEY.hex} (RGB ${CHROMA_KEY.r}, ${CHROMA_KEY.g}, ${CHROMA_KEY.b})
+- Fill EVERY empty area with that same solid ${CHROMA_KEY.hex}, including holes and gaps inside the design
+- Do NOT use a transparent background, checkerboard, white, gray, black, or any other backdrop
+- Do NOT use ${CHROMA_KEY.hex} anywhere inside the artwork itself — it is only the background key color
+- The background must be flat: no noise, no gradient, no texture, no shadows
 - CRITICAL: Do NOT depict any physical object, product, packaging, phone, case, tumbler, card, wood, metal, fabric, or photograph
 - CRITICAL: Do NOT show the artwork applied onto an item, mockup, or real-world surface
-- NEVER draw a checkerboard, gray/white grid, or any "transparent background" pattern
-- Empty regions AND holes inside the artwork (gaps between parts) must be actual transparent pixels (alpha 0), not a painted grid, gray fill, or placeholder texture
 - Do NOT include surface texture, material, shadow, reflection, table, background scenery, or a filled backing plate
 - Do NOT add any border, frame, outline, edge decoration, or rectangular boundary around the design
-- Do NOT add a stroke or box around the artwork — the design should fade cleanly to transparent at the edges
+- Do NOT add a stroke or box around the artwork
 - Do NOT draw lines that touch or follow the outer edge of the canvas
-- Leave clear transparent margin between the artwork and all four image edges
 - Scale the artwork to fill most of the canvas — avoid large empty areas above, below, or beside the design
-- The design must not form a closed rectangle around the perimeter of the image
 - Keep the design centered with padding inside the canvas
 - ${modeInstructions}`
 }

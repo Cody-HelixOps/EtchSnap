@@ -25,7 +25,7 @@ Rules:
 - Match the target complexity level above — do not make a simple brief overly ornate, and do not strip detail from a complex brief
 - Keep the same subject and intent as the user's brief idea
 - Do NOT add borders, frames, or edge decorations to the design
-- Do NOT mention transparent backgrounds or file formats
+- Do NOT mention backgrounds, transparency, chroma keys, or file formats
 - Do NOT use markdown, bullet points, numbering, or labels
 - Return ONLY the enhanced description text`
 }

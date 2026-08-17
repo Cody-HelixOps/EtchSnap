@@ -142,24 +142,6 @@ function paintCheckerboard(
   }
 }
 
-function testFakeTransparencyGridRemoved(): void {
-  const image = createImage(128, 96)
-  paintCheckerboard(image, 24, 32, 80, 48, 8, [248, 248, 248], [198, 198, 198])
-  fillRect(image, 48, 12, 28, 28, 186, 112, 42)
-  fillRect(image, 54, 44, 16, 22, 32, 28, 24)
-
-  isolateArtwork(image)
-
-  const art = sample(image, 60, 24)
-  const gondola = sample(image, 60, 52)
-  const grid = sample(image, 28, 36)
-  const gridGap = sample(image, 40, 50)
-  assert(art.a > 200 && art.r > 150, 'bronze artwork should remain')
-  assert(gondola.a > 200 && gondola.r < 50, 'dark overlapping gondola should remain')
-  assert(grid.a < 20, 'fake transparency checkerboard should be removed')
-  assert(gridGap.a < 20, 'checkerboard in interior gaps should be removed')
-}
-
 function testColorfulCheckerDesignKept(): void {
   const image = createImage(96, 64)
   paintCheckerboard(image, 16, 8, 64, 48, 8, [210, 30, 40], [20, 20, 20])
@@ -172,17 +154,50 @@ function testColorfulCheckerDesignKept(): void {
   assert(black.a > 200 && black.r < 40, 'black chess squares should remain')
 }
 
-function testOffsetSubtleTransparencyGrid(): void {
-  const image = createImage(140, 100)
-  paintCheckerboard(image, 19, 23, 96, 56, 8, [244, 244, 246], [218, 219, 221])
-  fillRect(image, 50, 8, 24, 24, 168, 98, 38)
+function testMagentaBackgroundRemoved(): void {
+  const image = createImage(100, 80)
+  fillRect(image, 0, 0, 100, 80, 255, 0, 255)
+  fillRect(image, 30, 18, 40, 44, 186, 112, 42)
 
   isolateArtwork(image)
 
-  const art = sample(image, 58, 16)
-  const grid = sample(image, 27, 31)
-  assert(art.a > 200 && art.r > 140, 'artwork beside a subtle grid should remain')
-  assert(grid.a < 20, 'misaligned light-gray transparency grid should be removed')
+  const art = sample(image, 50, 40)
+  const bg = sample(image, 2, 2)
+  assert(art.a > 200 && art.r > 150, 'bronze artwork should remain after chroma key')
+  assert(bg.a < 20, 'magenta background should be removed')
+}
+
+function testMagentaInteriorHoleRemoved(): void {
+  const image = createImage(80, 80)
+  fillRect(image, 10, 10, 60, 60, 186, 112, 42)
+  fillRect(image, 28, 28, 24, 24, 255, 0, 255)
+
+  isolateArtwork(image)
+
+  const frame = sample(image, 15, 15)
+  const hole = sample(image, 40, 40)
+  assert(frame.a > 200 && frame.r > 150, 'artwork around a keyed hole should remain')
+  assert(hole.a < 20, 'magenta interior hole should be removed')
+}
+
+function testDetailedArtworkNotGridPunched(): void {
+  const image = createImage(120, 160)
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const index = (y * image.width + x) * 4
+      image.data[index] = 140 + ((x * 7 + y * 3) % 40)
+      image.data[index + 1] = 90 + ((x * 5 + y * 11) % 30)
+      image.data[index + 2] = 40 + ((x * 3 + y * 7) % 20)
+      image.data[index + 3] = 255
+    }
+  }
+
+  const before = countOpaque(image)
+  isolateArtwork(image)
+  assert(
+    countOpaque(image) >= before * 0.92,
+    'detailed bronze artwork must not be punched with a transparency grid',
+  )
 }
 
 const tests = [
@@ -191,9 +206,10 @@ const tests = [
   ['source subtraction keeps artwork', testSourceSubtractionKeepsArtwork],
   ['white artwork on white object kept', testWhiteArtworkOnWhiteObjectKept],
   ['full canvas white background', testFullCanvasWhiteBackground],
-  ['fake transparency grid removed', testFakeTransparencyGridRemoved],
+  ['magenta background removed', testMagentaBackgroundRemoved],
+  ['magenta interior hole removed', testMagentaInteriorHoleRemoved],
   ['colorful checker design kept', testColorfulCheckerDesignKept],
-  ['offset subtle transparency grid', testOffsetSubtleTransparencyGrid],
+  ['detailed artwork not grid punched', testDetailedArtworkNotGridPunched],
 ] as const
 
 let failed = 0

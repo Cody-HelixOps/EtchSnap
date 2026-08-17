@@ -46,7 +46,7 @@ export async function generateDesignWithOpenAI(
   }
 
   if (usesGptImage) {
-    body.background = 'transparent'
+    body.background = 'opaque'
     body.output_format = 'png'
     body.quality = 'high'
   } else {
