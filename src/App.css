@@ -566,7 +566,7 @@
   position: absolute;
   max-width: none;
   max-height: none;
-  object-fit: contain;
+  object-fit: fill;
   pointer-events: none;
 }
 

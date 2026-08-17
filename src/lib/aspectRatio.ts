@@ -30,5 +30,16 @@ export function pickGeminiAspectRatio(width: number, height: number): string {
 export function describeAspectRatio(width: number, height: number): string {
   const roundedW = Math.max(1, Math.round(width))
   const roundedH = Math.max(1, Math.round(height))
-  return `${roundedW}:${roundedH} (about ${pickGeminiAspectRatio(width, height)})`
+  const ratio = width / Math.max(height, 1)
+  const picked = pickGeminiAspectRatio(width, height)
+
+  if (ratio >= 1.22) {
+    return `${roundedW}:${roundedH}, a WIDE landscape canvas (generate at ${picked}). Spread the artwork across the full WIDTH so it fills this region. Do not place a square badge, stamp, or icon in the center with empty side margins.`
+  }
+
+  if (ratio <= 0.82) {
+    return `${roundedW}:${roundedH}, a TALL portrait canvas (generate at ${picked}). Stretch the artwork along the full HEIGHT so it fills this region. Do not place a square badge, stamp, or icon in the center with empty top and bottom margins.`
+  }
+
+  return `${roundedW}:${roundedH}, a nearly square canvas (generate at ${picked}). Fill this square. A compact emblem is OK only because the region itself is square.`
 }

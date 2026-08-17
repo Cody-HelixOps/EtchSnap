@@ -1,31 +1,61 @@
 import type { OutputMode } from '../types'
-import { buildComplexityInstructions, getComplexityLabel } from './prompt'
+import { getComplexityLabel } from './prompt'
+
+function buildPrintableComplexity(complexity: number): string {
+  if (complexity <= 20) {
+    return `Keep it SIMPLE: a few bold shapes, thick lines, and almost no ornament. One clear focal subject.`
+  }
+  if (complexity <= 40) {
+    return `Keep it LIGHT: clean graphic with modest supporting detail. Still easy to print or engrave.`
+  }
+  if (complexity <= 60) {
+    return `Keep it BALANCED: a strong focal graphic with a little supporting detail, not a busy illustration.`
+  }
+  if (complexity <= 80) {
+    return `Keep it DETAILED: more motifs and linework, but still a flat printable graphic with a readable silhouette.`
+  }
+  return `Keep it COMPLEX: denser graphic motifs and pattern, but never a scene or painting. The main subject must stay obvious.`
+}
 
 export function buildEnhancePrompt(
   description: string,
   mode: OutputMode,
   complexity: number,
 ): string {
-  const modeContext =
+  const productionGoal =
     mode === 'uv'
-      ? 'full-color UV printing on a physical object surface'
-      : 'black-and-white laser engraving on a physical object surface'
+      ? `This is for a full-color UV print graphic: a decal that will be printed onto a real object later.
+Use a limited bold color palette, solid color blocking, and clean edges.
+Do not describe photorealism, painterly shading, cinematic lighting, or photographic texture.`
+      : `This is for a laser-engraving graphic: solid black artwork burned into a real object later.
+Describe only solid filled black shapes, thick readable lines, and high-contrast silhouettes.
+Compose it to fill a selected surface, not as a centered square logo or stamp.
+Do not describe gray, gradients, color, fine hairlines, or photorealistic shading.`
 
-  return `You help users write detailed design prompts for AI image generation used in ${modeContext}.
+  return `Rewrite the user's design idea into a short production brief for printable artwork.
 
-The user gave a brief design idea:
+${productionGoal}
+
+User idea:
 "${description}"
 
-Target design complexity: ${getComplexityLabel(complexity)}.
-${buildComplexityInstructions(complexity)}
+Target complexity: ${getComplexityLabel(complexity)}.
+${buildPrintableComplexity(complexity)}
 
-Expand it into a clear, vivid design description (2-4 sentences) that preserves their intent while adding useful visual detail such as style, composition, motifs, line weight, and mood.
+Primary objective: keep a UV/laser printable GRAPHIC of their subject. Improve clarity for production. Do not invent a new concept.
 
-Rules:
-- Match the target complexity level above — do not make a simple brief overly ornate, and do not strip detail from a complex brief
-- Keep the same subject and intent as the user's brief idea
-- Do NOT add borders, frames, or edge decorations to the design
-- Do NOT mention backgrounds, transparency, chroma keys, or file formats
-- Do NOT use markdown, bullet points, numbering, or labels
-- Return ONLY the enhanced description text`
+Write 1-2 short sentences that:
+- Keep their subject as the single focal point
+- Describe a flat graphic (emblem, icon, lettering, or ornament), not a picture of a world
+- Add only production-useful detail: silhouette, fill vs outline, symmetry, line weight, color blocks
+- Stay at the requested complexity
+
+Do NOT:
+- Add scenery, atmosphere, mood lighting, materials, cameras, or storytelling
+- Mention the physical object, product, mockup, table, or surface it will go on
+- Add borders, frames, background, transparency, or file formats
+- Use AI-art jargon (masterpiece, 8k, octane, highly detailed, intricate, cinematic)
+- Make a simple idea ornate, or bury the subject in extra motifs
+
+Return ONLY the rewritten description text.`
 }

@@ -15,6 +15,11 @@ export async function enhanceDescriptionWithGemini(
         parts: [{ text: buildEnhancePrompt(request.description, request.mode, request.complexity) }],
       },
     ],
+    config: {
+      temperature: 0.35,
+      systemInstruction:
+        'You rewrite design ideas into short UV-print and laser-engraving briefs. Keep them as flat printable graphics. Never write illustration, scene, or mockup prompts.',
+    },
   })
 
   const text = response.candidates?.[0]?.content?.parts

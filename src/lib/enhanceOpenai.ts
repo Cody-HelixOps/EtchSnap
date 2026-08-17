@@ -26,8 +26,13 @@ export async function enhanceDescriptionWithOpenAI(
     },
     body: JSON.stringify({
       model: request.textModel,
-      temperature: 0.7,
+      temperature: 0.35,
       messages: [
+        {
+          role: 'system',
+          content:
+            'You rewrite design ideas into short UV-print and laser-engraving briefs. Keep them as flat printable graphics. Never write illustration, scene, or mockup prompts.',
+        },
         {
           role: 'user',
           content: buildEnhancePrompt(request.description, request.mode, request.complexity),

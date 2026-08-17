@@ -46,14 +46,16 @@ export function buildPrompt(
   const modeInstructions =
     mode === 'uv'
       ? `Use full vibrant color suitable for UV printing on physical objects.
-Keep rich color detail and clean edges.`
+Keep rich color detail and clean edges.
+The colored artwork must fill this canvas the way a UV decal fills the selected surface.`
       : `Use ONLY pure black (#000000) for all visible design pixels.
 Fill every shape, gear, letter, and motif with solid black — no hollow fills, no gray, no gradients.
-High-contrast artwork suitable for laser engraving.`
+High-contrast artwork suitable for laser engraving.
+CRITICAL: This is a laser decal for a selected surface, not a square logo. The black artwork must fill this canvas shape. Do not output a centered square stamp, badge, or icon unless the canvas itself is square. The black pixels' bounding box should reach near all four edges.`
 
   const aspectLine = aspectRatio
-    ? `Canvas aspect ratio: ${aspectRatio}. Compose the artwork to fit this shape.`
-    : `Keep the design centered and sized to fit the canvas naturally.`
+    ? `Canvas / selected region: ${aspectRatio}`
+    : `Fill the canvas. Match the selected region's shape — do not default to a square composition.`
 
   return `You are creating standalone printable artwork: a decal / UV print / engraving graphic.
 
@@ -78,7 +80,8 @@ Output requirements:
 - Do NOT add any border, frame, outline, edge decoration, or rectangular boundary around the design
 - Do NOT add a stroke or box around the artwork
 - Do NOT draw lines that touch or follow the outer edge of the canvas
-- Scale the artwork to fill most of the canvas — avoid large empty areas above, below, or beside the design
-- Keep the design centered with padding inside the canvas
+- Scale the artwork to FILL this canvas shape — the design must occupy most of the width AND most of the height
+- Avoid large empty key-color margins on any side; small padding only
+- Keep the design centered, but stretch/spread the composition to the canvas aspect instead of leaving a square motif floating in the middle
 - ${modeInstructions}`
 }
