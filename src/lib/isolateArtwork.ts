@@ -353,6 +353,93 @@ export function removeObjectPlate(image: PixelImage): number {
   return applyFloodIfSafe(image, flooded)
 }
 
+export function removeDetachedSpecks(image: PixelImage): number {
+  const { data, width, height } = image
+  const total = width * height
+  const labels = new Int32Array(total)
+  const sizes = [0]
+  const minX = [0]
+  const minY = [0]
+  const maxX = [0]
+  const maxY = [0]
+  let labelCount = 0
+
+  const opaque = (pixelIndex: number) => data[pixelIndex * 4 + 3] >= OPAQUE_ALPHA
+
+  for (let start = 0; start < total; start += 1) {
+    if (labels[start] !== 0 || !opaque(start)) continue
+
+    labelCount += 1
+    sizes[labelCount] = 0
+    minX[labelCount] = width
+    minY[labelCount] = height
+    maxX[labelCount] = -1
+    maxY[labelCount] = -1
+
+    const stack = [start]
+    labels[start] = labelCount
+
+    while (stack.length > 0) {
+      const pixelIndex = stack.pop() as number
+      sizes[labelCount] += 1
+      const x = pixelIndex % width
+      const y = Math.floor(pixelIndex / width)
+      minX[labelCount] = Math.min(minX[labelCount], x)
+      minY[labelCount] = Math.min(minY[labelCount], y)
+      maxX[labelCount] = Math.max(maxX[labelCount], x)
+      maxY[labelCount] = Math.max(maxY[labelCount], y)
+
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          if (dx === 0 && dy === 0) continue
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+          const neighbor = ny * width + nx
+          if (labels[neighbor] !== 0 || !opaque(neighbor)) continue
+          labels[neighbor] = labelCount
+          stack.push(neighbor)
+        }
+      }
+    }
+  }
+
+  if (labelCount <= 1) return 0
+
+  let main = 1
+  for (let label = 2; label <= labelCount; label += 1) {
+    if (sizes[label] > sizes[main]) main = label
+  }
+
+  const pad = Math.max(24, Math.round(Math.max(width, height) * 0.03))
+  const keepLeft = minX[main] - pad
+  const keepTop = minY[main] - pad
+  const keepRight = maxX[main] + pad
+  const keepBottom = maxY[main] + pad
+  const keep = new Uint8Array(labelCount + 1)
+  keep[main] = 1
+
+  for (let label = 1; label <= labelCount; label += 1) {
+    if (label === main) continue
+    const nearMain =
+      maxX[label] >= keepLeft &&
+      minX[label] <= keepRight &&
+      maxY[label] >= keepTop &&
+      minY[label] <= keepBottom
+    if (nearMain || sizes[label] / sizes[main] >= 0.08) keep[label] = 1
+  }
+
+  let cleared = 0
+  for (let pixelIndex = 0; pixelIndex < total; pixelIndex += 1) {
+    const label = labels[pixelIndex]
+    if (label === 0 || keep[label]) continue
+    data[pixelIndex * 4 + 3] = 0
+    cleared += 1
+  }
+
+  return cleared
+}
+
 export function isolateArtwork(
   generated: PixelImage,
   source?: PixelImage | null,
@@ -363,36 +450,34 @@ export function isolateArtwork(
     removeChromaKey(work) + removeDetectedSolidBackground(work)
   const chromaWorked = keyed >= Math.max(400, canvas * 0.08)
 
-  if (chromaWorked) {
-    generated.data.set(work.data)
-    return generated
-  }
+  if (!chromaWorked) {
+    const originalOpaque = countOpaque(work)
 
-  const originalOpaque = countOpaque(work)
+    if (source && originalOpaque > 0) {
+      const trial = clonePixels(work)
+      const cleared = subtractSourceLookalike(trial, source)
+      const remaining = countOpaque(trial)
+      if (
+        cleared / canvas >= SOURCE_CANVAS_MATCH &&
+        cleared / originalOpaque >= SOURCE_OPAQUE_MATCH &&
+        remainingIsSafe(originalOpaque, remaining)
+      ) {
+        work.data.set(trial.data)
+      }
+    }
 
-  if (source && originalOpaque > 0) {
-    const trial = clonePixels(work)
-    const cleared = subtractSourceLookalike(trial, source)
-    const remaining = countOpaque(trial)
-    if (
-      cleared / canvas >= SOURCE_CANVAS_MATCH &&
-      cleared / originalOpaque >= SOURCE_OPAQUE_MATCH &&
-      remainingIsSafe(originalOpaque, remaining)
-    ) {
-      work.data.set(trial.data)
+    const edgeTrial = clonePixels(work)
+    if (removeBackgroundFromImageEdges(edgeTrial) > 0) {
+      work.data.set(edgeTrial.data)
+    }
+
+    const plateTrial = clonePixels(work)
+    if (removeObjectPlate(plateTrial) > 0) {
+      work.data.set(plateTrial.data)
     }
   }
 
-  const edgeTrial = clonePixels(work)
-  if (removeBackgroundFromImageEdges(edgeTrial) > 0) {
-    work.data.set(edgeTrial.data)
-  }
-
-  const plateTrial = clonePixels(work)
-  if (removeObjectPlate(plateTrial) > 0) {
-    work.data.set(plateTrial.data)
-  }
-
+  removeDetachedSpecks(work)
   generated.data.set(work.data)
   return generated
 }

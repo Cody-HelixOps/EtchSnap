@@ -232,6 +232,32 @@ function testGeminiRosePinkBackgroundRemoved(): void {
   assert(bg.a < 20, 'Gemini rose-pink background must be keyed out')
 }
 
+function testCornerSpeckRemovedAfterKey(): void {
+  const image = createImage(160, 120)
+  fillRect(image, 0, 0, 160, 120, 209, 35, 116)
+  fillRect(image, 42, 30, 76, 60, 186, 112, 42)
+  fillRect(image, 1, 1, 7, 6, 228, 142, 168)
+
+  isolateArtwork(image)
+
+  const spec = sample(image, 3, 3)
+  const art = sample(image, 80, 58)
+  assert(spec.a < 20, 'detached top-left leftover must be removed')
+  assert(art.a > 200 && art.r > 150, 'main UV artwork must remain')
+}
+
+function testNearbyAccentKept(): void {
+  const image = createImage(160, 120)
+  fillRect(image, 0, 0, 160, 120, 255, 0, 255)
+  fillRect(image, 50, 34, 60, 52, 186, 112, 42)
+  fillRect(image, 40, 38, 6, 6, 32, 168, 164)
+
+  isolateArtwork(image)
+
+  const accent = sample(image, 42, 40)
+  assert(accent.a > 200 && accent.g > 140, 'small accents beside the main design must stay')
+}
+
 function testDarkUvBodyStaysSolid(): void {
   const image = createImage(100, 80)
   fillRect(image, 0, 0, 100, 80, 255, 0, 255)
@@ -258,6 +284,8 @@ const tests = [
   ['detailed artwork not grid punched', testDetailedArtworkNotGridPunched],
   ['laser black fills stay solid', testLaserBlackFillsStaySolid],
   ['gemini rose-pink background removed', testGeminiRosePinkBackgroundRemoved],
+  ['corner speck removed after key', testCornerSpeckRemovedAfterKey],
+  ['nearby accent kept', testNearbyAccentKept],
   ['dark uv body stays solid', testDarkUvBodyStaysSolid],
 ] as const
 
