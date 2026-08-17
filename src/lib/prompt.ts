@@ -48,7 +48,8 @@ export function buildPrompt(
       ? `Use full vibrant color suitable for UV printing on physical objects.
 Keep rich color detail and clean edges.`
       : `Use ONLY pure black (#000000) for all visible design pixels.
-No gray, no gradients, no color — high-contrast artwork suitable for laser engraving.`
+Fill every shape, gear, letter, and motif with solid black — no hollow fills, no gray, no gradients.
+High-contrast artwork suitable for laser engraving.`
 
   const aspectLine = aspectRatio
     ? `Canvas aspect ratio: ${aspectRatio}. Compose the artwork to fit this shape.`

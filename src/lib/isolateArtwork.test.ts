@@ -200,6 +200,36 @@ function testDetailedArtworkNotGridPunched(): void {
   )
 }
 
+function testLaserBlackFillsStaySolid(): void {
+  const image = createImage(120, 90)
+  fillRect(image, 0, 0, 120, 90, 255, 0, 255)
+  fillRect(image, 20, 12, 80, 66, 8, 8, 8)
+  fillRect(image, 44, 28, 28, 28, 255, 0, 255)
+
+  isolateArtwork(image)
+
+  const fill = sample(image, 28, 18)
+  const hole = sample(image, 56, 40)
+  const bg = sample(image, 4, 4)
+  assert(fill.a > 200 && fill.r < 20, 'solid black laser fills must stay opaque')
+  assert(hole.a < 20, 'magenta holes inside black artwork should be removed')
+  assert(bg.a < 20, 'magenta background around laser art should be removed')
+}
+
+function testDarkUvBodyStaysSolid(): void {
+  const image = createImage(100, 80)
+  fillRect(image, 0, 0, 100, 80, 255, 0, 255)
+  fillRect(image, 22, 10, 56, 60, 28, 22, 18)
+  fillRect(image, 36, 22, 28, 18, 196, 140, 48)
+
+  isolateArtwork(image)
+
+  const body = sample(image, 28, 16)
+  const gold = sample(image, 48, 30)
+  assert(body.a > 200 && body.r < 50, 'dark UV fills must not be eaten as background')
+  assert(gold.a > 200 && gold.r > 150, 'gold details should remain')
+}
+
 const tests = [
   ['white plate with red design', testWhitePlateWithRedDesign],
   ['transparent design unchanged', testTransparentDesignUnchanged],
@@ -210,6 +240,8 @@ const tests = [
   ['magenta interior hole removed', testMagentaInteriorHoleRemoved],
   ['colorful checker design kept', testColorfulCheckerDesignKept],
   ['detailed artwork not grid punched', testDetailedArtworkNotGridPunched],
+  ['laser black fills stay solid', testLaserBlackFillsStaySolid],
+  ['dark uv body stays solid', testDarkUvBodyStaysSolid],
 ] as const
 
 let failed = 0

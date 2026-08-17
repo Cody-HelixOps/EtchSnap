@@ -18,6 +18,15 @@ function chromaDistance(r: number, g: number, b: number): number {
   return Math.hypot(r - CHROMA_KEY.r, g - CHROMA_KEY.g, b - CHROMA_KEY.b)
 }
 
+export function isChromaKeyColor(
+  r: number,
+  g: number,
+  b: number,
+  threshold = SOFT_KEY_DISTANCE,
+): boolean {
+  return chromaDistance(r, g, b) <= threshold
+}
+
 function unmixKey(r: number, g: number, b: number, alpha: number): [number, number, number] {
   if (alpha <= 0) return [0, 0, 0]
   const keyed = 1 - alpha

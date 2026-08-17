@@ -1,4 +1,4 @@
-import { removeChromaKey } from './chromaKey.ts'
+import { isChromaKeyColor, removeChromaKey } from './chromaKey.ts'
 
 export interface PixelImage {
   data: Uint8ClampedArray
@@ -59,9 +59,16 @@ function luminance(r: number, g: number, b: number): number {
 function floodTolerance(r: number, g: number, b: number): number {
   const lum = luminance(r, g, b)
   const sat = Math.max(r, g, b) - Math.min(r, g, b)
+  if (isChromaKeyColor(r, g, b)) return 46
   if (lum > 228 && sat < 22) return 50
-  if (lum < 22 && sat < 18) return 30
-  return 34
+  return 28
+}
+
+function isPlateBackgroundColor(r: number, g: number, b: number): boolean {
+  if (isChromaKeyColor(r, g, b)) return true
+  const lum = luminance(r, g, b)
+  const sat = Math.max(r, g, b) - Math.min(r, g, b)
+  return lum >= 210 && sat <= 36
 }
 
 function remainingIsSafe(originalOpaque: number, remaining: number): boolean {
@@ -260,7 +267,10 @@ export function removeBackgroundFromImageEdges(image: PixelImage): number {
 
   const maybeSeed = (x: number, y: number) => {
     const pixelIndex = y * width + x
-    if (data[pixelIndex * 4 + 3] > OPAQUE_ALPHA) seeds.push(pixelIndex)
+    const index = pixelIndex * 4
+    if (data[index + 3] <= OPAQUE_ALPHA) return
+    if (!isPlateBackgroundColor(data[index], data[index + 1], data[index + 2])) return
+    seeds.push(pixelIndex)
   }
 
   for (let x = 0; x < width; x += 1) {
@@ -324,6 +334,10 @@ export function removeObjectPlate(image: PixelImage): number {
   const flatRim = rim.filter((pixelIndex) => {
     const x = pixelIndex % width
     const y = Math.floor(pixelIndex / width)
+    const index = pixelIndex * 4
+    if (!isPlateBackgroundColor(data[index], data[index + 1], data[index + 2])) {
+      return false
+    }
     return localVariance(data, width, height, x, y) < 260
   })
 
@@ -340,14 +354,21 @@ export function isolateArtwork(
   source?: PixelImage | null,
 ): PixelImage {
   const work = clonePixels(generated)
-  removeChromaKey(work)
+  const canvas = work.width * work.height
+  const keyed = removeChromaKey(work)
+  const chromaWorked = keyed >= Math.max(400, canvas * 0.08)
+
+  if (chromaWorked) {
+    generated.data.set(work.data)
+    return generated
+  }
+
   const originalOpaque = countOpaque(work)
 
   if (source && originalOpaque > 0) {
     const trial = clonePixels(work)
     const cleared = subtractSourceLookalike(trial, source)
     const remaining = countOpaque(trial)
-    const canvas = work.width * work.height
     if (
       cleared / canvas >= SOURCE_CANVAS_MATCH &&
       cleared / originalOpaque >= SOURCE_OPAQUE_MATCH &&
