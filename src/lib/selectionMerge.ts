@@ -501,12 +501,15 @@ function mergeRegionGroup(
   }
 
   fillInternalHoles(mask, width, height)
-  if (countConnectedComponents(mask, width, height) > 1) {
-    connectNearbyRegions(mask, width, height, offsetX, offsetY, regions, options.mergeNearbyGap ?? 0)
-    fillInternalHoles(mask, width, height)
-  }
-  if (countConnectedComponents(mask, width, height) > 1) {
-    return null
+  const mergeNearbyGap = options.mergeNearbyGap ?? 0
+  if (mergeNearbyGap > 0) {
+    let components = countConnectedComponents(mask, width, height)
+    if (components > 1) {
+      connectNearbyRegions(mask, width, height, offsetX, offsetY, regions, mergeNearbyGap)
+      fillInternalHoles(mask, width, height)
+      components = countConnectedComponents(mask, width, height)
+    }
+    if (components > 1) return null
   }
 
   const boundary = traceBoundary(mask, width, height)
