@@ -1,4 +1,6 @@
 import { buildOverlayRegions, getLargestRegion } from './selectionLayout.ts'
+import { getPathBounds } from './imageUtils.ts'
+import { mergeSelectionRegions } from './selectionMerge.ts'
 import type { Selection } from '../types.ts'
 
 function assert(condition: boolean, message: string): void {
@@ -64,9 +66,70 @@ function testOverlayCombinesRegionsIntoSingleObject(): void {
   assert(overlays[0].clipPath === undefined, 'multi-region combined overlay should not clip')
 }
 
+function testOverlappingRegionsMergeIntoSingleSelection(): void {
+  const merged = mergeSelectionRegions(
+    [
+      {
+        points: [
+          { x: 10, y: 10 },
+          { x: 50, y: 10 },
+          { x: 50, y: 40 },
+          { x: 10, y: 40 },
+        ],
+        closed: true,
+      },
+    ],
+    {
+      points: [
+        { x: 30, y: 20 },
+        { x: 70, y: 20 },
+        { x: 70, y: 50 },
+        { x: 30, y: 50 },
+      ],
+      closed: true,
+    },
+  )
+
+  assert(merged.length === 1, 'overlapping regions should merge into one selection')
+  const bounds = getPathBounds(merged[0].points)
+  assert(bounds.x === 9, 'merged region should extend to the left-most overlapping edge')
+  assert(bounds.y === 9, 'merged region should extend to the top-most overlapping edge')
+  assert(bounds.width === 61, 'merged region should span the union width')
+  assert(bounds.height === 41, 'merged region should span the union height')
+}
+
+function testDisjointRegionsStaySeparate(): void {
+  const merged = mergeSelectionRegions(
+    [
+      {
+        points: [
+          { x: 10, y: 10 },
+          { x: 30, y: 10 },
+          { x: 30, y: 30 },
+          { x: 10, y: 30 },
+        ],
+        closed: true,
+      },
+    ],
+    {
+      points: [
+        { x: 50, y: 10 },
+        { x: 70, y: 10 },
+        { x: 70, y: 30 },
+        { x: 50, y: 30 },
+      ],
+      closed: true,
+    },
+  )
+
+  assert(merged.length === 2, 'separate regions should continue to append independently')
+}
+
 const tests = [
   ['largest region picked', testLargestRegionPicked],
   ['overlay combines regions into single object', testOverlayCombinesRegionsIntoSingleObject],
+  ['overlapping regions merge into one selection', testOverlappingRegionsMergeIntoSingleSelection],
+  ['disjoint regions stay separate', testDisjointRegionsStaySeparate],
 ] as const
 
 let failed = 0

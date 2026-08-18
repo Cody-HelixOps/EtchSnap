@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Point, Selection, SelectionPath, SelectionTool } from '../types'
 import { isValidRegion } from '../lib/imageUtils'
 import { getMagicWandEdgeThreshold, magicWandSelection } from '../lib/magicWand'
+import { mergeSelectionRegions } from '../lib/selectionMerge'
 
 interface ImageSelectorProps {
   image: HTMLImageElement | null
@@ -214,7 +215,9 @@ export function ImageSelector({
     }
 
     if (append && selection?.regions.length) {
-      onSelectionChange({ regions: [...selection.regions, closedPath] })
+      onSelectionChange({
+        regions: mergeSelectionRegions(selection.regions, closedPath),
+      })
     } else {
       onSelectionChange({ regions: [closedPath] })
     }
