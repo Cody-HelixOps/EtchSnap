@@ -33,7 +33,7 @@ function testLargestRegionPicked(): void {
   assert(largest.points[1].x === 80, 'largest region should be the wide scale')
 }
 
-function testOverlayPlacesEachRegionSeparately(): void {
+function testOverlayCombinesRegionsIntoSingleObject(): void {
   const selection: Selection = {
     regions: [
       {
@@ -58,16 +58,15 @@ function testOverlayPlacesEachRegionSeparately(): void {
   }
 
   const overlays = buildOverlayRegions(selection, 100, 100)
-  assert(overlays.length === 2, 'each selected area gets its own overlay')
-  assert(Math.abs(overlays[0].y - 0.1) < 0.001, 'first region stays at its own top')
-  assert(Math.abs(overlays[1].y - 0.5) < 0.001, 'second region is not merged into the first bbox')
-  assert(overlays[0].height < 0.25 && overlays[1].height < 0.25, 'gap between regions is not filled')
-  assert(overlays[0].clipPath.includes('polygon('), 'overlay is clipped to the region shape')
+  assert(overlays.length === 1, 'all selected areas should preview as one combined object')
+  assert(Math.abs(overlays[0].y - 0.1) < 0.001, 'combined overlay starts at top-most region')
+  assert(Math.abs(overlays[0].height - 0.6) < 0.001, 'combined overlay spans all selected areas')
+  assert(overlays[0].clipPath === undefined, 'multi-region combined overlay should not clip')
 }
 
 const tests = [
   ['largest region picked', testLargestRegionPicked],
-  ['overlay places each region separately', testOverlayPlacesEachRegionSeparately],
+  ['overlay combines regions into single object', testOverlayCombinesRegionsIntoSingleObject],
 ] as const
 
 let failed = 0
