@@ -16,7 +16,7 @@ import {
   getDefaultOpenAiTextModel,
 } from './lib/openaiModels'
 import {
-  cropPathToBase64,
+  cropSelectionToBase64,
   downloadDataUrl,
   downloadText,
   getSelectionBounds,
@@ -24,7 +24,7 @@ import {
   isValidSelection,
   loadImageFromFile,
 } from './lib/imageUtils'
-import { buildOverlayRegions, getLargestRegion, type OverlayRegion } from './lib/selectionLayout'
+import { buildOverlayRegions, type OverlayRegion } from './lib/selectionLayout'
 import { pngToSvg } from './lib/svgUtils'
 import { getComplexityLabel } from './lib/prompt'
 import {
@@ -307,10 +307,9 @@ function App() {
     setShowObject(false)
 
     try {
-      const primaryRegion = getLargestRegion(selection)
-      const { base64, mimeType } = cropPathToBase64(
+      const { base64, mimeType } = cropSelectionToBase64(
         sourceImage,
-        primaryRegion,
+        selection,
         displaySize.width,
         displaySize.height,
       )
@@ -327,7 +326,7 @@ function App() {
         description: description.trim(),
         mode,
         complexity,
-        partCount: selection.regions.length,
+        partCount: 1,
       })
 
       setResultDataUrl(dataUrl)

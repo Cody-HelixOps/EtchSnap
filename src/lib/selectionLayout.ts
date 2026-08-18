@@ -5,7 +5,7 @@ export interface OverlayRegion {
   y: number
   width: number
   height: number
-  clipPath: string
+  clipPath?: string
 }
 
 function pathBounds(points: Point[]) {
@@ -44,26 +44,28 @@ export function buildOverlayRegions(
 ): OverlayRegion[] {
   const width = Math.max(displayWidth, 1)
   const height = Math.max(displayHeight, 1)
-
-  return selection.regions.map((region) => {
-    const bounds = pathBounds(region.points)
-    const clipPath =
-      'polygon(' +
+  const selectionBounds = pathBounds(selection.regions.flatMap((region) => region.points))
+  const normalizedWidth = Math.max(selectionBounds.width, 1)
+  const normalizedHeight = Math.max(selectionBounds.height, 1)
+  const clipPathSegments = selection.regions
+    .map((region) =>
       region.points
         .map((point) => {
-          const px = bounds.width <= 0 ? 0 : ((point.x - bounds.x) / bounds.width) * 100
-          const py = bounds.height <= 0 ? 0 : ((point.y - bounds.y) / bounds.height) * 100
+          const px = ((point.x - selectionBounds.x) / normalizedWidth) * 100
+          const py = ((point.y - selectionBounds.y) / normalizedHeight) * 100
           return `${px.toFixed(3)}% ${py.toFixed(3)}%`
         })
-        .join(', ') +
-      ')'
+        .join(', '),
+    )
+    .filter((segment) => segment.length > 0)
 
-    return {
-      x: bounds.x / width,
-      y: bounds.y / height,
-      width: bounds.width / width,
-      height: bounds.height / height,
-      clipPath,
-    }
-  })
+  return [
+    {
+      x: selectionBounds.x / width,
+      y: selectionBounds.y / height,
+      width: selectionBounds.width / width,
+      height: selectionBounds.height / height,
+      clipPath: clipPathSegments.length === 1 ? `polygon(${clipPathSegments[0]})` : undefined,
+    },
+  ]
 }
