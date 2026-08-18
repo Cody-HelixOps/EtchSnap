@@ -1,6 +1,7 @@
 import type { Point, SelectionPath } from '../types'
 
 const EPSILON = 1e-6
+const BRIDGE_RADIUS_GAP_DIVISOR = 6
 
 export interface MergeSelectionOptions {
   mergeNearbyGap?: number
@@ -411,7 +412,7 @@ function drawBridge(
   const startY = start.y - offsetY
   const endX = end.x - offsetX
   const endY = end.y - offsetY
-  const distance = Math.max(Math.abs(endX - startX), Math.abs(endY - startY))
+  const distance = Math.hypot(endX - startX, endY - startY)
   const steps = Math.max(1, Math.ceil(distance))
 
   for (let step = 0; step <= steps; step += 1) {
@@ -472,7 +473,7 @@ function connectNearbyRegions(
 ): void {
   if (maxGap <= 0) return
 
-  const bridgeRadius = Math.max(1, Math.floor(maxGap / 6))
+  const bridgeRadius = Math.max(1, Math.floor(maxGap / BRIDGE_RADIUS_GAP_DIVISOR))
   for (let i = 0; i < regions.length; i += 1) {
     for (let j = i + 1; j < regions.length; j += 1) {
       if (!regionGapWithin(regions[i], regions[j], maxGap)) continue
