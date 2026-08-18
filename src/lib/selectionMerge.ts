@@ -1,6 +1,17 @@
 import type { Point, SelectionPath } from '../types'
 
 const EPSILON = 1e-6
+const CARDINAL_DIRECTIONS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const
+const BRIDGE_RADIUS_GAP_DIVISOR = 6
+
+export interface MergeSelectionOptions {
+  mergeNearbyGap?: number
+}
 
 function getBounds(points: Point[]) {
   let minX = Number.POSITIVE_INFINITY
@@ -85,6 +96,42 @@ function pointInPolygonOrOnEdge(point: Point, polygon: Point[]): boolean {
   return inside
 }
 
+function pointDistance(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function closestPointOnSegment(point: Point, start: Point, end: Point): Point {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  if (Math.abs(dx) <= EPSILON && Math.abs(dy) <= EPSILON) {
+    return start
+  }
+
+  const t = Math.max(
+    0,
+    Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)),
+  )
+  return {
+    x: start.x + dx * t,
+    y: start.y + dy * t,
+  }
+}
+
+function pointToSegmentDistance(point: Point, start: Point, end: Point): number {
+  return pointDistance(point, closestPointOnSegment(point, start, end))
+}
+
+function segmentDistance(a1: Point, a2: Point, b1: Point, b2: Point): number {
+  if (segmentsIntersectOrTouch(a1, a2, b1, b2)) return 0
+
+  return Math.min(
+    pointToSegmentDistance(a1, b1, b2),
+    pointToSegmentDistance(a2, b1, b2),
+    pointToSegmentDistance(b1, a1, a2),
+    pointToSegmentDistance(b2, a1, a2),
+  )
+}
+
 function regionsOverlapOrTouch(a: SelectionPath, b: SelectionPath): boolean {
   const aBounds = getBounds(a.points)
   const bBounds = getBounds(b.points)
@@ -108,6 +155,29 @@ function regionsOverlapOrTouch(a: SelectionPath, b: SelectionPath): boolean {
   }
 
   return pointInPolygonOrOnEdge(a.points[0], b.points) || pointInPolygonOrOnEdge(b.points[0], a.points)
+}
+
+function regionGapWithin(a: SelectionPath, b: SelectionPath, maxGap: number): boolean {
+  if (regionsOverlapOrTouch(a, b)) return true
+  if (maxGap <= 0) return false
+
+  const aBounds = getBounds(a.points)
+  const bBounds = getBounds(b.points)
+  const gapX = Math.max(0, bBounds.minX - aBounds.maxX, aBounds.minX - bBounds.maxX)
+  const gapY = Math.max(0, bBounds.minY - aBounds.maxY, aBounds.minY - bBounds.maxY)
+  if (Math.hypot(gapX, gapY) > maxGap) return false
+
+  for (let i = 0; i < a.points.length; i += 1) {
+    const a1 = a.points[i]
+    const a2 = a.points[(i + 1) % a.points.length]
+    for (let j = 0; j < b.points.length; j += 1) {
+      const b1 = b.points[j]
+      const b2 = b.points[(j + 1) % b.points.length]
+      if (segmentDistance(a1, a2, b1, b2) <= maxGap) return true
+    }
+  }
+
+  return false
 }
 
 function fillInternalHoles(mask: Uint8Array, width: number, height: number): void {
@@ -137,12 +207,7 @@ function fillInternalHoles(mask: Uint8Array, width: number, height: number): voi
     const x = index % width
     const y = Math.floor(index / width)
 
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ]) {
+    for (const [dx, dy] of CARDINAL_DIRECTIONS) {
       const nx = x + dx
       const ny = y + dy
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
@@ -166,12 +231,7 @@ function isBoundaryPixel(
 ): boolean {
   if (!mask[y * width + x]) return false
 
-  for (const [dx, dy] of [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ]) {
+  for (const [dx, dy] of CARDINAL_DIRECTIONS) {
     const nx = x + dx
     const ny = y + dy
     if (nx < 0 || ny < 0 || nx >= width || ny >= height) return true
@@ -282,7 +342,145 @@ function simplifyPath(points: Point[], epsilon: number): Point[] {
   return [points[0], points[end]]
 }
 
-function mergeRegionGroup(regions: SelectionPath[]): SelectionPath | null {
+function countConnectedComponents(mask: Uint8Array, width: number, height: number): number {
+  const visited = new Uint8Array(mask.length)
+  const queue = new Int32Array(mask.length)
+  let components = 0
+
+  for (let start = 0; start < mask.length; start += 1) {
+    if (!mask[start] || visited[start]) continue
+    components += 1
+    if (components > 1) return components
+
+    let head = 0
+    let tail = 0
+    queue[tail++] = start
+    visited[start] = 1
+
+    while (head < tail) {
+      const index = queue[head++]
+      const x = index % width
+      const y = Math.floor(index / width)
+
+      for (const [dx, dy] of CARDINAL_DIRECTIONS) {
+        const nx = x + dx
+        const ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+        const next = ny * width + nx
+        if (!mask[next] || visited[next]) continue
+        visited[next] = 1
+        queue[tail++] = next
+      }
+    }
+  }
+
+  return components
+}
+
+function drawDisk(mask: Uint8Array, width: number, height: number, cx: number, cy: number, radius: number): void {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx * dx + dy * dy > radius * radius) continue
+      const x = cx + dx
+      const y = cy + dy
+      if (x < 0 || y < 0 || x >= width || y >= height) continue
+      mask[y * width + x] = 1
+    }
+  }
+}
+
+function drawBridge(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  offsetX: number,
+  offsetY: number,
+  start: Point,
+  end: Point,
+  radius: number,
+): void {
+  const startX = start.x - offsetX
+  const startY = start.y - offsetY
+  const endX = end.x - offsetX
+  const endY = end.y - offsetY
+  const distance = Math.hypot(endX - startX, endY - startY)
+  const steps = Math.max(1, Math.ceil(distance))
+
+  for (let step = 0; step <= steps; step += 1) {
+    const t = step / steps
+    drawDisk(
+      mask,
+      width,
+      height,
+      Math.round(startX + (endX - startX) * t),
+      Math.round(startY + (endY - startY) * t),
+      radius,
+    )
+  }
+}
+
+function findClosestBridge(a: SelectionPath, b: SelectionPath): { start: Point; end: Point; distance: number } {
+  let bestStart = a.points[0]
+  let bestEnd = b.points[0]
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  const tryPair = (point: Point, start: Point, end: Point, invert = false) => {
+    const candidate = closestPointOnSegment(point, start, end)
+    const distance = pointDistance(point, candidate)
+    if (distance >= bestDistance) return
+    bestDistance = distance
+    if (invert) {
+      bestStart = candidate
+      bestEnd = point
+    } else {
+      bestStart = point
+      bestEnd = candidate
+    }
+  }
+
+  for (const point of a.points) {
+    for (let index = 0; index < b.points.length; index += 1) {
+      tryPair(point, b.points[index], b.points[(index + 1) % b.points.length])
+    }
+  }
+
+  for (const point of b.points) {
+    for (let index = 0; index < a.points.length; index += 1) {
+      tryPair(point, a.points[index], a.points[(index + 1) % a.points.length], true)
+    }
+  }
+
+  return { start: bestStart, end: bestEnd, distance: bestDistance }
+}
+
+function connectNearbyRegions(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  offsetX: number,
+  offsetY: number,
+  regions: SelectionPath[],
+  maxGap: number,
+): void {
+  if (maxGap <= 0) return
+
+  // Keep the connector much narrower than the allowed gap so nearby wand merges
+  // join cleanly without ballooning into the unselected space between regions.
+  const bridgeRadius = Math.max(1, Math.floor(maxGap / BRIDGE_RADIUS_GAP_DIVISOR))
+  for (let i = 0; i < regions.length; i += 1) {
+    for (let j = i + 1; j < regions.length; j += 1) {
+      if (!regionGapWithin(regions[i], regions[j], maxGap)) continue
+      const bridge = findClosestBridge(regions[i], regions[j])
+      if (bridge.distance > maxGap) continue
+      drawBridge(mask, width, height, offsetX, offsetY, bridge.start, bridge.end, bridgeRadius)
+    }
+  }
+}
+
+function mergeRegionGroup(
+  regions: SelectionPath[],
+  options: MergeSelectionOptions = {},
+): SelectionPath | null {
   const allPoints = regions.flatMap((region) => region.points)
   if (allPoints.length === 0) return null
 
@@ -303,6 +501,16 @@ function mergeRegionGroup(regions: SelectionPath[]): SelectionPath | null {
   }
 
   fillInternalHoles(mask, width, height)
+  const mergeNearbyGap = options.mergeNearbyGap ?? 0
+  if (mergeNearbyGap > 0) {
+    let components = countConnectedComponents(mask, width, height)
+    if (components > 1) {
+      connectNearbyRegions(mask, width, height, offsetX, offsetY, regions, mergeNearbyGap)
+      fillInternalHoles(mask, width, height)
+      components = countConnectedComponents(mask, width, height)
+    }
+    if (components > 1) return null
+  }
 
   const boundary = traceBoundary(mask, width, height)
   if (boundary.length < 3) return null
@@ -326,8 +534,10 @@ function mergeRegionGroup(regions: SelectionPath[]): SelectionPath | null {
 export function mergeSelectionRegions(
   existingRegions: SelectionPath[],
   nextRegion: SelectionPath,
+  options: MergeSelectionOptions = {},
 ): SelectionPath[] {
   if (existingRegions.length === 0) return [nextRegion]
+  const mergeNearbyGap = options.mergeNearbyGap ?? 0
 
   const overlapping = new Set<number>()
   const queue: SelectionPath[] = [nextRegion]
@@ -338,7 +548,9 @@ export function mergeSelectionRegions(
 
     for (let index = 0; index < existingRegions.length; index += 1) {
       if (overlapping.has(index)) continue
-      if (!regionsOverlapOrTouch(candidate, existingRegions[index])) continue
+      if (!regionGapWithin(candidate, existingRegions[index], mergeNearbyGap)) {
+        continue
+      }
       overlapping.add(index)
       queue.push(existingRegions[index])
     }
@@ -352,7 +564,7 @@ export function mergeSelectionRegions(
   const merged = mergeRegionGroup([
     nextRegion,
     ...overlapIndexes.map((index) => existingRegions[index]),
-  ])
+  ], options)
   if (!merged) {
     return [...existingRegions, nextRegion]
   }

@@ -16,6 +16,10 @@ const CLOSE_RADIUS = 14
 const MIN_ZOOM = 0.5
 const MAX_ZOOM = 3
 const ZOOM_STEP = 0.25
+const MIN_MAGIC_WAND_MERGE_GAP = 12
+// Small tolerance fills often leave a few pixels between adjacent wand picks, so
+// keep a modest minimum bridge width even before the ratio-based gap grows.
+const MAGIC_WAND_MERGE_GAP_RATIO = 0.6
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
@@ -216,7 +220,12 @@ export function ImageSelector({
 
     if (append && selection?.regions.length) {
       onSelectionChange({
-        regions: mergeSelectionRegions(selection.regions, closedPath),
+        regions: mergeSelectionRegions(selection.regions, closedPath, {
+          mergeNearbyGap:
+            tool === 'wand'
+              ? Math.max(MIN_MAGIC_WAND_MERGE_GAP, wandTolerance * MAGIC_WAND_MERGE_GAP_RATIO)
+              : 0,
+        }),
       })
     } else {
       onSelectionChange({ regions: [closedPath] })

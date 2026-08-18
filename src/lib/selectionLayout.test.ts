@@ -136,11 +136,44 @@ function testDisjointRegionsStaySeparate(): void {
   assert(merged.length === 2, 'separate regions should continue to append independently')
 }
 
+function testNearbyDisjointRegionsCanMergeForWandSelections(): void {
+  const merged = mergeSelectionRegions(
+    [
+      {
+        points: [
+          { x: 10, y: 10 },
+          { x: 40, y: 10 },
+          { x: 40, y: 36 },
+          { x: 10, y: 36 },
+        ],
+        closed: true,
+      },
+    ],
+    {
+      points: [
+        { x: 48, y: 14 },
+        { x: 82, y: 14 },
+        { x: 82, y: 42 },
+        { x: 48, y: 42 },
+      ],
+      closed: true,
+    },
+    { mergeNearbyGap: 12 },
+  )
+
+  assert(merged.length === 1, 'nearby disjoint wand regions should merge into one selection')
+  const bounds = getPathBounds(merged[0].points)
+  assert(bounds.x === 10, 'merged wand selection should keep the left-most bound')
+  assert(bounds.width >= 71, 'merged wand selection should cover both separated regions')
+  assert(bounds.height >= 31, 'merged wand selection should cover the full merged height')
+}
+
 const tests = [
   ['largest region picked', testLargestRegionPicked],
   ['overlay combines regions into single object', testOverlayCombinesRegionsIntoSingleObject],
   ['overlapping regions merge into one selection', testOverlappingRegionsMergeIntoSingleSelection],
   ['disjoint regions stay separate', testDisjointRegionsStaySeparate],
+  ['nearby disjoint regions can merge for wand selections', testNearbyDisjointRegionsCanMergeForWandSelections],
 ] as const
 
 let failed = 0
