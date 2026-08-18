@@ -1,10 +1,21 @@
 import { buildOverlayRegions, getLargestRegion } from './selectionLayout.ts'
-import { getPathBounds } from './imageUtils.ts'
 import { mergeSelectionRegions } from './selectionMerge.ts'
-import type { Selection } from '../types.ts'
+import type { Point, Selection } from '../types.ts'
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
+}
+
+function getPathBounds(points: Point[]) {
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+
+  return {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+  }
 }
 
 function testLargestRegionPicked(): void {
