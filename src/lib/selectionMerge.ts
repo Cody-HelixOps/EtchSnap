@@ -219,6 +219,8 @@ function traceBoundary(mask: Uint8Array, width: number, height: number): Point[]
 
     let found = false
     for (let offset = 0; offset < 8; offset += 1) {
+      // Start by checking the neighbor just behind the incoming edge, then sweep
+      // clockwise to keep the contour walker hugging the outer boundary.
       const nextDirection = (direction + offset + 5) % 8
       const [dx, dy] = directions[nextDirection]
       const nx = x + dx
@@ -305,6 +307,8 @@ function mergeRegionGroup(regions: SelectionPath[]): SelectionPath | null {
   const boundary = traceBoundary(mask, width, height)
   if (boundary.length < 3) return null
 
+  // Match the magic-wand simplification bands so merged regions keep a similar
+  // balance between smooth outlines and preserving sharper corners.
   const epsilon =
     boundary.length > 400
       ? 4.5
