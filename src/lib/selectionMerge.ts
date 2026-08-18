@@ -1,6 +1,12 @@
 import type { Point, SelectionPath } from '../types'
 
 const EPSILON = 1e-6
+const CARDINAL_DIRECTIONS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const
 const BRIDGE_RADIUS_GAP_DIVISOR = 6
 
 export interface MergeSelectionOptions {
@@ -201,12 +207,7 @@ function fillInternalHoles(mask: Uint8Array, width: number, height: number): voi
     const x = index % width
     const y = Math.floor(index / width)
 
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ]) {
+    for (const [dx, dy] of CARDINAL_DIRECTIONS) {
       const nx = x + dx
       const ny = y + dy
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
@@ -230,12 +231,7 @@ function isBoundaryPixel(
 ): boolean {
   if (!mask[y * width + x]) return false
 
-  for (const [dx, dy] of [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ]) {
+  for (const [dx, dy] of CARDINAL_DIRECTIONS) {
     const nx = x + dx
     const ny = y + dy
     if (nx < 0 || ny < 0 || nx >= width || ny >= height) return true
@@ -366,12 +362,7 @@ function countConnectedComponents(mask: Uint8Array, width: number, height: numbe
       const x = index % width
       const y = Math.floor(index / width)
 
-      for (const [dx, dy] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ]) {
+      for (const [dx, dy] of CARDINAL_DIRECTIONS) {
         const nx = x + dx
         const ny = y + dy
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
@@ -473,6 +464,8 @@ function connectNearbyRegions(
 ): void {
   if (maxGap <= 0) return
 
+  // Keep the connector much narrower than the allowed gap so nearby wand merges
+  // join cleanly without ballooning into the unselected space between regions.
   const bridgeRadius = Math.max(1, Math.floor(maxGap / BRIDGE_RADIUS_GAP_DIVISOR))
   for (let i = 0; i < regions.length; i += 1) {
     for (let j = i + 1; j < regions.length; j += 1) {
