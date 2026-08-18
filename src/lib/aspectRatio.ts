@@ -27,6 +27,11 @@ export function pickGeminiAspectRatio(width: number, height: number): string {
   return best.label
 }
 
+export function geminiAspectRatioValue(label: string): number {
+  const match = GEMINI_ASPECT_RATIOS.find((ratio) => ratio.label === label)
+  return match?.value ?? 1
+}
+
 export function describeAspectRatio(width: number, height: number): string {
   const roundedW = Math.max(1, Math.round(width))
   const roundedH = Math.max(1, Math.round(height))

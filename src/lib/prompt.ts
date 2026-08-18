@@ -41,63 +41,44 @@ export function buildPrompt(
   description: string,
   mode: OutputMode,
   complexity: number,
-  aspectRatio?: string,
+  _aspectRatio?: string,
   partCount = 1,
 ): string {
   const modeInstructions =
     mode === 'uv'
-      ? `Use full vibrant color suitable for UV printing on physical objects.
-Keep rich color detail and clean edges.
-The colored artwork must fill this canvas the way a UV decal fills the selected surface.`
+      ? `Use full vibrant color suitable for UV printing.
+Keep rich color detail and clean edges.`
       : `Use ONLY pure black (#000000) for all visible design pixels.
-Fill every shape, gear, letter, and motif with solid black — no hollow fills, no gray, no gradients.
-High-contrast artwork suitable for laser engraving.
-CRITICAL: This is a laser decal for a selected surface, not a square logo. The black artwork must fill this canvas shape. Do not output a centered square stamp, badge, or icon unless the canvas itself is square. The black pixels' bounding box should reach near all four edges.`
-
-  const aspectLine = aspectRatio
-    ? `Canvas / selected region: ${aspectRatio}`
-    : `Fill the canvas. Match the selected region's shape — do not default to a square composition.`
-
-  const silhouetteLine = `A silhouette image is attached.
-- White pixels are the EXACT selected surface the design must fill
-- Magenta pixels are outside the selection — keep them magenta and do not draw there
-- Holes in the white shape (screws, cutouts, gaps) must stay magenta
-- The artwork must sit inside that white silhouette and follow its outline
-- Scale and compose the design so it fills the white shape, not a rectangle around it`
+Fill every shape, letter, and motif with solid black — no gray, no gradients.`
 
   const partLine =
     partCount > 1
-      ? `This artwork will be stamped separately onto ${partCount} similar parts. Compose ONE design that fills a single part. Do not draw multiple copies, and do not span a gap between parts.`
+      ? `This artwork will be stamped separately onto ${partCount} similar parts. Compose ONE design that fills a single stencil. Do not draw multiple copies.`
       : ''
 
-  return `You are creating standalone printable artwork: a decal / UV print / engraving graphic.
+  return `You are filling a BLANK STENCIL TEMPLATE with printable artwork.
 
-This is NOT a product mockup. The output will be printed or engraved onto a real object later.
+The attached image is the template:
+- The irregular LIGHT/BLANK shape is the ONLY area you may draw in. That shape is the complete canvas.
+- ${CHROMA_KEY.hex} magenta is OUTSIDE the stencil. Leave every magenta pixel magenta. Do not paint sky, ground, scenery, or background there.
+- Magenta holes inside the blank shape are cutouts (screws, gaps). Leave those magenta.
+
+CRITICAL composition rules:
+- Design the artwork TO FIT that blank silhouette, the way a custom inlay or decal is drawn for one specific shape.
+- The full subject must live inside the blank shape. Do not generate a rectangular scene, photo, or landscape and then crop it.
+- Shrink, stretch, and arrange the subject so it reads as a complete design within that outline.
+- Do not let important parts of the subject fall into the magenta.
 
 Design request: ${description}
 
 ${buildComplexityInstructions(complexity)}
-
-${aspectLine}
-${silhouetteLine}
 ${partLine}
 
 Output requirements:
-- Return ONLY the decorative design artwork itself — pure graphic artwork, nothing else
-- Put the artwork on a perfectly uniform solid background of exactly ${CHROMA_KEY.hex} (RGB ${CHROMA_KEY.r}, ${CHROMA_KEY.g}, ${CHROMA_KEY.b})
-- Fill EVERY empty area with that same solid ${CHROMA_KEY.hex}, including holes and gaps inside the design
-- Do NOT use a transparent background, checkerboard, white, gray, black, or any other backdrop
-- Do NOT use ${CHROMA_KEY.hex} anywhere inside the artwork itself — it is only the background key color
-- The background must be flat: no noise, no gradient, no texture, no shadows
-- CRITICAL: Do NOT depict any physical object, product, packaging, phone, case, tumbler, card, wood, metal, fabric, or photograph
-- CRITICAL: Do NOT show the artwork applied onto an item, mockup, or real-world surface
-- Do NOT include surface texture, material, shadow, reflection, table, background scenery, or a filled backing plate
-- Do NOT add any border, frame, outline, edge decoration, or rectangular boundary around the design
-- Do NOT add a stroke or box around the artwork
-- Do NOT add a rectangular frame, border, or box around the canvas
-- The design MAY reach the edge of the white silhouette; do not leave a floating stamp inside it
-- Scale the artwork to FILL the white silhouette — occupy most of its width AND height
-- Do not leave large empty margins inside the white shape
-- Keep the design centered in the silhouette, not as a square motif floating in a rectangle
+- Return the template with artwork painted only in the blank stencil
+- Magenta regions must stay exactly ${CHROMA_KEY.hex} (RGB ${CHROMA_KEY.r}, ${CHROMA_KEY.g}, ${CHROMA_KEY.b})
+- Do NOT use ${CHROMA_KEY.hex} inside the artwork itself
+- Do NOT depict a physical object, product mockup, photograph, table, or surface
+- Do NOT add a rectangular border, frame, or box
 - ${modeInstructions}`
 }

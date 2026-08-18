@@ -1,5 +1,11 @@
 import { CHROMA_KEY } from './chromaKey.ts'
-import { createSilhouetteReference, fitDesignToMask } from './fitToMask.ts'
+import {
+  createBlankTemplate,
+  createSilhouetteReference,
+  fitDesignToMask,
+  layoutBlankTemplate,
+  TEMPLATE_CONTENT_SCALE,
+} from './fitToMask.ts'
 import type { PixelImage } from './isolateArtwork.ts'
 
 function createImage(width: number, height: number, r = 0, g = 0, b = 0, a = 0): PixelImage {
@@ -49,31 +55,67 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
 }
 
-function testOutputMatchesMaskSizeAndClip(): void {
+function testBlankTemplateLeavesMagentaAroundTheShape(): void {
+  const mask = createImage(200, 50)
+  fillRect(mask, 0, 0, 200, 50, 255, 255, 255, 255)
+
+  const { image, layout } = createBlankTemplate(mask, 21 / 9)
+
+  assert(image.width / image.height - 21 / 9 < 0.05, 'template canvas should match the model aspect ratio')
+  assert(layout.offsetY > 8, 'blank stencil must sit inside magenta margins, not fill the canvas')
+  assert(
+    mask.width / image.width <= TEMPLATE_CONTENT_SCALE + 0.02,
+    'the selected shape should be smaller than the template canvas',
+  )
+  assert(
+    sample(image, 4, 4).r === CHROMA_KEY.r && sample(image, 4, 4).b === CHROMA_KEY.b,
+    'template corners must stay magenta',
+  )
+  const inside = sample(image, layout.offsetX + 20, layout.offsetY + 20)
+  assert(inside.r > 240 && inside.g > 240 && inside.b > 240, 'the stencil interior must be a blank fill')
+}
+
+function testMappingReadsStencilRegionNotLetterbox(): void {
+  const mask = createImage(200, 50)
+  fillRect(mask, 0, 0, 200, 50, 255, 255, 255, 255)
+  const layout = layoutBlankTemplate(mask.width, mask.height, 21 / 9)
+  const generated = createImage(layout.canvasWidth, layout.canvasHeight, 255, 0, 0, 255)
+  fillRect(
+    generated,
+    layout.offsetX,
+    layout.offsetY,
+    layout.contentWidth,
+    layout.contentHeight,
+    0,
+    80,
+    0,
+    255,
+  )
+
+  const fitted = fitDesignToMask(generated, mask, 21 / 9)
+  const pixel = sample(fitted, 100, 25)
+  assert(pixel.g > 60 && pixel.r < 40, 'output should come from the stencil region, not the magenta letterbox')
+  assert(sample(fitted, 0, 0).a > 200, 'mapped design should still fill the selected mask')
+}
+
+function testMaskHolesStayEmpty(): void {
   const mask = createImage(120, 40)
   fillRect(mask, 10, 8, 100, 24, 10, 10, 10, 255)
   fillRect(mask, 55, 16, 10, 8, 0, 0, 0, 0)
 
-  const design = createImage(60, 60, 0, 0, 0, 255)
-  const fitted = fitDesignToMask(design, mask)
+  const { image, layout } = createBlankTemplate(mask, 16 / 9)
+  const hole = sample(image, layout.offsetX + 60, layout.offsetY + 20)
+  assert(
+    hole.r === CHROMA_KEY.r && hole.b === CHROMA_KEY.b,
+    'cutouts in the selection must stay magenta on the blank template',
+  )
 
+  const generated = createImage(layout.canvasWidth, layout.canvasHeight, 0, 0, 0, 255)
+  const fitted = fitDesignToMask(generated, mask, 16 / 9)
   assert(fitted.width === 120 && fitted.height === 40, 'fitted design must match the selected crop size')
   assert(sample(fitted, 2, 2).a === 0, 'pixels outside the selection must be transparent')
-  assert(sample(fitted, 118, 38).a === 0, 'far corner outside the selection must be transparent')
   assert(sample(fitted, 60, 20).a === 0, 'holes inside the selection must stay transparent')
   assert(sample(fitted, 20, 20).a > 200, 'pixels inside the selection must keep the design')
-  assert(sample(fitted, 100, 20).a > 200, 'design must cover the full width of the selection')
-}
-
-function testCoverScaleFillsWideSelection(): void {
-  const mask = createImage(200, 50)
-  fillRect(mask, 0, 0, 200, 50, 255, 255, 255, 255)
-
-  const design = createImage(40, 40, 20, 20, 20, 255)
-  const fitted = fitDesignToMask(design, mask)
-
-  assert(sample(fitted, 4, 25).a > 200, 'cover-fit should fill the left edge of a wide selection')
-  assert(sample(fitted, 195, 25).a > 200, 'cover-fit should fill the right edge of a wide selection')
 }
 
 function testSilhouetteUsesMaskShape(): void {
@@ -84,17 +126,17 @@ function testSilhouetteUsesMaskShape(): void {
   const inside = sample(silhouette, 20, 12)
   const outside = sample(silhouette, 1, 1)
 
-  assert(inside.r === 255 && inside.g === 255 && inside.b === 255, 'selected area should be white in the silhouette')
+  assert(inside.r > 240 && inside.g > 240 && inside.b > 240, 'selected area should be blank in the silhouette')
   assert(
     outside.r === CHROMA_KEY.r && outside.g === CHROMA_KEY.g && outside.b === CHROMA_KEY.b,
     'outside the selection should be chroma key',
   )
-  assert(outside.a === 255, 'silhouette background must be opaque so the model sees the shape')
 }
 
 const tests = [
-  ['output matches mask size and clip', testOutputMatchesMaskSizeAndClip],
-  ['cover scale fills wide selection', testCoverScaleFillsWideSelection],
+  ['blank template leaves magenta around the shape', testBlankTemplateLeavesMagentaAroundTheShape],
+  ['mapping reads stencil region not letterbox', testMappingReadsStencilRegionNotLetterbox],
+  ['mask holes stay empty', testMaskHolesStayEmpty],
   ['silhouette uses mask shape', testSilhouetteUsesMaskShape],
 ] as const
 

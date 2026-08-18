@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from '@google/genai'
 import type { GenerateRequest } from '../types'
-import { pickGeminiAspectRatio, describeAspectRatio } from './aspectRatio'
-import { createSilhouetteReference } from './fitToMask'
+import { pickGeminiAspectRatio, geminiAspectRatioValue } from './aspectRatio'
+import { createBlankTemplate } from './fitToMask'
 import { base64ToDataUrl, loadImageFromDataUrl, postProcessDesign } from './imageUtils'
 import { imageDataToDataUrl } from './trimUtils'
 import { buildPrompt } from './prompt'
@@ -22,12 +22,16 @@ export async function generateDesignWithGemini(
 ): Promise<string> {
   const cropDataUrl = base64ToDataUrl(request.croppedImageBase64, request.mimeType)
   const cropImageData = await imageToImageData(cropDataUrl)
-  const silhouette = createSilhouetteReference(cropImageData)
-  const silhouetteBase64 = imageDataToDataUrl(
-    new ImageData(new Uint8ClampedArray(silhouette.data), silhouette.width, silhouette.height),
+  const aspectRatioLabel = pickGeminiAspectRatio(cropImageData.width, cropImageData.height)
+  const aspectRatio = geminiAspectRatioValue(aspectRatioLabel)
+  const template = createBlankTemplate(cropImageData, aspectRatio)
+  const templateBase64 = imageDataToDataUrl(
+    new ImageData(
+      new Uint8ClampedArray(template.image.data),
+      template.image.width,
+      template.image.height,
+    ),
   ).split(',')[1]
-
-  const aspectRatio = pickGeminiAspectRatio(cropImageData.width, cropImageData.height)
 
   const ai = new GoogleGenAI({ apiKey: request.apiKey })
 
@@ -40,7 +44,7 @@ export async function generateDesignWithGemini(
           {
             inlineData: {
               mimeType: 'image/png',
-              data: silhouetteBase64,
+              data: templateBase64,
             },
           },
           {
@@ -48,7 +52,7 @@ export async function generateDesignWithGemini(
               request.description,
               request.mode,
               request.complexity,
-              describeAspectRatio(cropImageData.width, cropImageData.height),
+              undefined,
               request.partCount ?? 1,
             ),
           },
@@ -57,7 +61,7 @@ export async function generateDesignWithGemini(
     ],
     config: {
       responseModalities: [Modality.TEXT, Modality.IMAGE],
-      imageConfig: { aspectRatio },
+      imageConfig: { aspectRatio: aspectRatioLabel },
     },
   })
 
@@ -76,5 +80,6 @@ export async function generateDesignWithGemini(
     imagePart.inlineData.data,
     request.mode,
     request.croppedImageBase64,
+    aspectRatio,
   )
 }
