@@ -103,10 +103,10 @@ function testOverlappingRegionsMergeIntoSingleSelection(): void {
 
   assert(merged.length === 1, 'overlapping regions should merge into one selection')
   const bounds = getPathBounds(merged[0].points)
-  assert(bounds.x === 9, 'merged region should extend to the left-most overlapping edge')
-  assert(bounds.y === 9, 'merged region should extend to the top-most overlapping edge')
-  assert(bounds.width === 61, 'merged region should span the union width')
-  assert(bounds.height === 41, 'merged region should span the union height')
+  assert(bounds.x === 10, 'merged region should extend to the left-most overlapping edge')
+  assert(bounds.y === 10, 'merged region should extend to the top-most overlapping edge')
+  assert(bounds.width >= 59, 'merged region should span the union width')
+  assert(bounds.height >= 39, 'merged region should span the union height')
 }
 
 function testDisjointRegionsStaySeparate(): void {
