@@ -58,6 +58,13 @@ CRITICAL: This is a laser decal for a selected surface, not a square logo. The b
     ? `Canvas / selected region: ${aspectRatio}`
     : `Fill the canvas. Match the selected region's shape — do not default to a square composition.`
 
+  const silhouetteLine = `A silhouette image is attached.
+- White pixels are the EXACT selected surface the design must fill
+- Magenta pixels are outside the selection — keep them magenta and do not draw there
+- Holes in the white shape (screws, cutouts, gaps) must stay magenta
+- The artwork must sit inside that white silhouette and follow its outline
+- Scale and compose the design so it fills the white shape, not a rectangle around it`
+
   const partLine =
     partCount > 1
       ? `This artwork will be stamped separately onto ${partCount} similar parts. Compose ONE design that fills a single part. Do not draw multiple copies, and do not span a gap between parts.`
@@ -72,6 +79,7 @@ Design request: ${description}
 ${buildComplexityInstructions(complexity)}
 
 ${aspectLine}
+${silhouetteLine}
 ${partLine}
 
 Output requirements:
@@ -86,9 +94,10 @@ Output requirements:
 - Do NOT include surface texture, material, shadow, reflection, table, background scenery, or a filled backing plate
 - Do NOT add any border, frame, outline, edge decoration, or rectangular boundary around the design
 - Do NOT add a stroke or box around the artwork
-- Do NOT draw lines that touch or follow the outer edge of the canvas
-- Scale the artwork to FILL this canvas shape — the design must occupy most of the width AND most of the height
-- Avoid large empty key-color margins on any side; small padding only
-- Keep the design centered, but stretch/spread the composition to the canvas aspect instead of leaving a square motif floating in the middle
+- Do NOT add a rectangular frame, border, or box around the canvas
+- The design MAY reach the edge of the white silhouette; do not leave a floating stamp inside it
+- Scale the artwork to FILL the white silhouette — occupy most of its width AND height
+- Do not leave large empty margins inside the white shape
+- Keep the design centered in the silhouette, not as a square motif floating in a rectangle
 - ${modeInstructions}`
 }

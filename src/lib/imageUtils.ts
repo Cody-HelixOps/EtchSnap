@@ -2,6 +2,7 @@ import type { OutputMode, Point, Selection, SelectionPath } from '../types'
 import { removeFrameBorder, stripOuterEdgePixels } from './borderRemoval'
 import { isChromaKeyColor, isMagentaFamily } from './chromaKey'
 import { isolateArtwork } from './isolateArtwork'
+import { fitDesignToMask } from './fitToMask'
 import { imageDataToDataUrl, trimImageData } from './trimUtils'
 
 export function loadImageFromFile(file: File): Promise<HTMLImageElement> {
@@ -227,6 +228,19 @@ export async function postProcessDesign(
   }
 
   ctx.putImageData(imageData, 0, 0)
+
+  if (sourceImageData) {
+    const fitted = fitDesignToMask(imageData, sourceImageData)
+    canvas.width = fitted.width
+    canvas.height = fitted.height
+    const fittedCtx = canvas.getContext('2d')
+    if (!fittedCtx) throw new Error('Could not create canvas context')
+    const fittedData = fittedCtx.createImageData(fitted.width, fitted.height)
+    fittedData.data.set(fitted.data)
+    fittedCtx.putImageData(fittedData, 0, 0)
+    return imageDataToDataUrl(fittedData)
+  }
+
   const trimmed = trimImageData(
     ctx.getImageData(0, 0, canvas.width, canvas.height),
     4,
