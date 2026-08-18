@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "node --experimental-strip-types src/lib/isolateArtwork.test.ts && node --experimental-strip-types src/lib/selectionLayout.test.ts && node --experimental-strip-types src/lib/fitToMask.test.ts",
-    "test:bg": "node --experimental-strip-types scripts/bg-cycle/run.ts --process-only"
+    "test:bg": "node --experimental-strip-types scripts/bg-cycle/run.ts --process-only",
+    "test:stencil": "node --experimental-strip-types scripts/stencil-live/run.ts"
   },
   "dependencies": {
     "@google/genai": "^2.17.1",

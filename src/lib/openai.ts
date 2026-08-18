@@ -21,12 +21,6 @@ function pickOpenAiSize(width: number, height: number): string {
   return '1024x1024'
 }
 
-function openAiAspectRatio(size: string): number {
-  if (size === '1536x1024') return 1536 / 1024
-  if (size === '1024x1536') return 1024 / 1536
-  return 1
-}
-
 export async function generateDesignWithOpenAI(
   request: GenerateRequest,
 ): Promise<string> {
@@ -40,6 +34,7 @@ export async function generateDesignWithOpenAI(
     request.complexity,
     undefined,
     request.partCount ?? 1,
+    false,
   )
   const size = pickOpenAiSize(reference.naturalWidth, reference.naturalHeight)
   const usesGptImage = /gpt-image/i.test(request.imageModel)
@@ -82,10 +77,5 @@ export async function generateDesignWithOpenAI(
     throw new Error('OpenAI did not return an image. Try adjusting your description or selection.')
   }
 
-  return postProcessDesign(
-    rawBase64,
-    request.mode,
-    request.croppedImageBase64,
-    openAiAspectRatio(size),
-  )
+  return postProcessDesign(rawBase64, request.mode, request.croppedImageBase64)
 }

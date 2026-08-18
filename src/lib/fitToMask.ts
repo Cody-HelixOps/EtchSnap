@@ -2,17 +2,10 @@ import { CHROMA_KEY } from './chromaKey.ts'
 import type { PixelImage } from './isolateArtwork.ts'
 
 const MASK_ALPHA = 16
-const BLANK_FILL = 250
-export const TEMPLATE_CONTENT_SCALE = 0.66
-
-export interface TemplateLayout {
-  offsetX: number
-  offsetY: number
-  contentWidth: number
-  contentHeight: number
-  canvasWidth: number
-  canvasHeight: number
-}
+const BLANK_FILL = 248
+const OUTLINE = 28
+const MAGENTA_TEMPLATE_TOLERANCE = 40
+const MAGENTA_GENERATED_TOLERANCE = 55
 
 function sampleBilinear(image: PixelImage, x: number, y: number): [number, number, number, number] {
   const maxX = image.width - 1
@@ -41,12 +34,38 @@ function sampleBilinear(image: PixelImage, x: number, y: number): [number, numbe
   return [channel(0), channel(1), channel(2), channel(3)]
 }
 
-function fillMagenta(image: PixelImage): void {
-  for (let i = 0; i < image.data.length; i += 4) {
-    image.data[i] = CHROMA_KEY.r
-    image.data[i + 1] = CHROMA_KEY.g
-    image.data[i + 2] = CHROMA_KEY.b
-    image.data[i + 3] = 255
+function isMagenta(r: number, g: number, b: number, tolerance: number): boolean {
+  return (
+    Math.abs(r - CHROMA_KEY.r) < tolerance &&
+    g < 90 &&
+    Math.abs(b - CHROMA_KEY.b) < tolerance
+  )
+}
+
+function neighborOutside(mask: PixelImage, x: number, y: number, radius = 2): boolean {
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      if (dx === 0 && dy === 0) continue
+      const nx = x + dx
+      const ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= mask.width || ny >= mask.height) return true
+      if (mask.data[(ny * mask.width + nx) * 4 + 3] <= MASK_ALPHA) return true
+    }
+  }
+  return false
+}
+
+function paintInteriorOutline(data: Uint8ClampedArray, mask: PixelImage): void {
+  for (let y = 0; y < mask.height; y += 1) {
+    for (let x = 0; x < mask.width; x += 1) {
+      const index = (y * mask.width + x) * 4
+      if (mask.data[index + 3] <= MASK_ALPHA) continue
+      if (!neighborOutside(mask, x, y)) continue
+      data[index] = OUTLINE
+      data[index + 1] = OUTLINE
+      data[index + 2] = OUTLINE
+      data[index + 3] = 255
+    }
   }
 }
 
@@ -67,67 +86,101 @@ export function createSilhouetteReference(mask: PixelImage): PixelImage {
     }
   }
 
+  paintInteriorOutline(data, mask)
   return { data, width: mask.width, height: mask.height }
 }
 
-export function layoutBlankTemplate(
-  contentWidth: number,
-  contentHeight: number,
-  aspectRatio: number,
-): TemplateLayout {
-  const minWidth = Math.max(1, Math.ceil(contentWidth / TEMPLATE_CONTENT_SCALE))
-  const minHeight = Math.max(1, Math.ceil(contentHeight / TEMPLATE_CONTENT_SCALE))
-  let canvasWidth = minWidth
-  let canvasHeight = minHeight
-  const safeAspect = Math.max(aspectRatio, 0.05)
+export function createPhotoStencil(source: PixelImage): PixelImage {
+  const data = new Uint8ClampedArray(source.data.length)
 
-  if (canvasWidth / canvasHeight > safeAspect) {
-    canvasHeight = Math.max(minHeight, Math.round(canvasWidth / safeAspect))
-  } else {
-    canvasWidth = Math.max(minWidth, Math.round(canvasHeight * safeAspect))
-  }
-
-  return {
-    offsetX: Math.floor((canvasWidth - contentWidth) / 2),
-    offsetY: Math.floor((canvasHeight - contentHeight) / 2),
-    contentWidth,
-    contentHeight,
-    canvasWidth,
-    canvasHeight,
-  }
-}
-
-export function createBlankTemplate(mask: PixelImage, aspectRatio: number): {
-  image: PixelImage
-  layout: TemplateLayout
-} {
-  const layout = layoutBlankTemplate(mask.width, mask.height, aspectRatio)
-  const image: PixelImage = {
-    data: new Uint8ClampedArray(layout.canvasWidth * layout.canvasHeight * 4),
-    width: layout.canvasWidth,
-    height: layout.canvasHeight,
-  }
-  fillMagenta(image)
-
-  for (let y = 0; y < mask.height; y += 1) {
-    for (let x = 0; x < mask.width; x += 1) {
-      if (mask.data[(y * mask.width + x) * 4 + 3] <= MASK_ALPHA) continue
-      const dest = ((y + layout.offsetY) * layout.canvasWidth + (x + layout.offsetX)) * 4
-      image.data[dest] = BLANK_FILL
-      image.data[dest + 1] = BLANK_FILL
-      image.data[dest + 2] = BLANK_FILL
-      image.data[dest + 3] = 255
+  for (let i = 0; i < source.data.length; i += 4) {
+    if (source.data[i + 3] > MASK_ALPHA) {
+      data[i] = source.data[i]
+      data[i + 1] = source.data[i + 1]
+      data[i + 2] = source.data[i + 2]
+      data[i + 3] = 255
+    } else {
+      data[i] = CHROMA_KEY.r
+      data[i + 1] = CHROMA_KEY.g
+      data[i + 2] = CHROMA_KEY.b
+      data[i + 3] = 255
     }
   }
 
-  return { image, layout }
+  paintInteriorOutline(data, source)
+  return { data, width: source.width, height: source.height }
 }
 
-export function mapGeneratedFromTemplate(
-  generated: PixelImage,
-  mask: PixelImage,
-  layout: TemplateLayout,
+export function scalePixelImage(image: PixelImage, scale: number): PixelImage {
+  if (Math.abs(scale - 1) < 0.001) {
+    return {
+      data: new Uint8ClampedArray(image.data),
+      width: image.width,
+      height: image.height,
+    }
+  }
+
+  return resizePixelImage(
+    image,
+    Math.max(1, Math.round(image.width * scale)),
+    Math.max(1, Math.round(image.height * scale)),
+  )
+}
+
+export function resizePixelImage(
+  image: PixelImage,
+  width: number,
+  height: number,
 ): PixelImage {
+  if (image.width === width && image.height === height) {
+    return {
+      data: new Uint8ClampedArray(image.data),
+      width,
+      height,
+    }
+  }
+
+  const data = new Uint8ClampedArray(width * height * 4)
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b, a] = sampleBilinear(
+        image,
+        ((x + 0.5) / width) * image.width - 0.5,
+        ((y + 0.5) / height) * image.height - 0.5,
+      )
+      const index = (y * width + x) * 4
+      data[index] = r
+      data[index + 1] = g
+      data[index + 2] = b
+      data[index + 3] = a
+    }
+  }
+
+  return { data, width, height }
+}
+
+export function prepareStencilTemplate(
+  mask: PixelImage,
+  minLongSide = 1024,
+): PixelImage {
+  const longSide = Math.max(mask.width, mask.height)
+  const scale = longSide < minLongSide ? minLongSide / longSide : 1
+  return createSilhouetteReference(scalePixelImage(mask, scale))
+}
+
+export function prepareEditTemplate(
+  source: PixelImage,
+  minLongSide = 1024,
+): PixelImage {
+  const longSide = Math.max(source.width, source.height)
+  const scale = longSide < minLongSide ? minLongSide / longSide : 1
+  // Blank coloring-book stencil: photo pixels invite the model to overlay a
+  // texture and crop it. A light fill plus outline makes it draw inside the shape.
+  return createSilhouetteReference(scalePixelImage(source, scale))
+}
+
+export function fitDesignToMask(design: PixelImage, mask: PixelImage): PixelImage {
   const out = {
     data: new Uint8ClampedArray(mask.width * mask.height * 4),
     width: mask.width,
@@ -141,10 +194,11 @@ export function mapGeneratedFromTemplate(
       if (maskAlpha <= MASK_ALPHA) continue
 
       const [r, g, b, a] = sampleBilinear(
-        generated,
-        ((layout.offsetX + x + 0.5) / layout.canvasWidth) * generated.width - 0.5,
-        ((layout.offsetY + y + 0.5) / layout.canvasHeight) * generated.height - 0.5,
+        design,
+        ((x + 0.5) / mask.width) * design.width - 0.5,
+        ((y + 0.5) / mask.height) * design.height - 0.5,
       )
+      if (isMagenta(r, g, b, MAGENTA_GENERATED_TOLERANCE)) continue
       const alpha = Math.min(a, maskAlpha)
       if (alpha <= MASK_ALPHA) continue
 
@@ -158,11 +212,132 @@ export function mapGeneratedFromTemplate(
   return out
 }
 
-export function fitDesignToMask(
-  design: PixelImage,
-  mask: PixelImage,
-  aspectRatio: number,
-): PixelImage {
-  const layout = layoutBlankTemplate(mask.width, mask.height, aspectRatio)
-  return mapGeneratedFromTemplate(design, mask, layout)
+export function aspectRatioMismatch(a: PixelImage, b: PixelImage): number {
+  const arA = a.width / Math.max(a.height, 1)
+  const arB = b.width / Math.max(b.height, 1)
+  return Math.abs(Math.log(arA / arB))
+}
+
+export function stencilRespectScore(
+  generated: PixelImage,
+  template: PixelImage,
+): {
+  respect: number
+  fill: number
+  change: number
+  aspectMismatch: number
+} {
+  const aligned =
+    generated.width === template.width && generated.height === template.height
+      ? generated
+      : resizePixelImage(generated, template.width, template.height)
+
+  let magentaPixels = 0
+  let magentaKept = 0
+  let blankPixels = 0
+  let blankFilled = 0
+  let changedPixels = 0
+
+  for (let i = 0; i < template.data.length; i += 4) {
+    const templateMagenta = isMagenta(
+      template.data[i],
+      template.data[i + 1],
+      template.data[i + 2],
+      MAGENTA_TEMPLATE_TOLERANCE,
+    )
+    const generatedMagenta = isMagenta(
+      aligned.data[i],
+      aligned.data[i + 1],
+      aligned.data[i + 2],
+      MAGENTA_GENERATED_TOLERANCE,
+    )
+
+    if (templateMagenta) {
+      magentaPixels += 1
+      if (generatedMagenta) magentaKept += 1
+      continue
+    }
+
+    blankPixels += 1
+    if (!generatedMagenta) blankFilled += 1
+
+    const distance = Math.hypot(
+      aligned.data[i] - template.data[i],
+      aligned.data[i + 1] - template.data[i + 1],
+      aligned.data[i + 2] - template.data[i + 2],
+    )
+    if (distance > 28) changedPixels += 1
+  }
+
+  return {
+    respect: magentaPixels === 0 ? 0 : magentaKept / magentaPixels,
+    fill: blankPixels === 0 ? 0 : blankFilled / blankPixels,
+    change: blankPixels === 0 ? 0 : changedPixels / blankPixels,
+    aspectMismatch: aspectRatioMismatch(generated, template),
+  }
+}
+
+export function looksLikeStencilEdit(
+  generated: PixelImage,
+  template: PixelImage,
+): boolean {
+  const score = stencilRespectScore(generated, template)
+  return (
+    score.aspectMismatch < 0.18 &&
+    score.respect >= 0.52 &&
+    score.fill >= 0.35 &&
+    score.change >= 0.22
+  )
+}
+
+function isStencilPixel(template: PixelImage, index: number): boolean {
+  return !isMagenta(
+    template.data[index],
+    template.data[index + 1],
+    template.data[index + 2],
+    MAGENTA_TEMPLATE_TOLERANCE,
+  )
+}
+
+export function countStencilRegions(template: PixelImage, minPixels = 40): number {
+  const { width, height } = template
+  const seen = new Uint8Array(width * height)
+  let regions = 0
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const start = y * width + x
+      if (seen[start] || !isStencilPixel(template, start * 4)) continue
+
+      let area = 0
+      const stack = [start]
+      seen[start] = 1
+
+      while (stack.length > 0) {
+        const i = stack.pop()
+        if (i === undefined) break
+        area += 1
+        const cx = i % width
+        const cy = Math.floor(i / width)
+        const neighbors = [i - 1, i + 1, i - width, i + width]
+        const valid = [
+          cx > 0,
+          cx + 1 < width,
+          cy > 0,
+          cy + 1 < height,
+        ]
+        for (let n = 0; n < 4; n += 1) {
+          if (!valid[n]) continue
+          const next = neighbors[n]
+          if (seen[next] || !isStencilPixel(template, next * 4)) continue
+          seen[next] = 1
+          stack.push(next)
+        }
+      }
+
+      if (area >= minPixels) regions += 1
+    }
+  }
+
+  return regions
 }

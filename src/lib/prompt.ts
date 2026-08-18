@@ -11,30 +11,49 @@ export function getComplexityLabel(complexity: number): string {
 
 export function buildComplexityInstructions(complexity: number): string {
   if (complexity <= 20) {
-    return `Design complexity: SIMPLE.
-Keep the artwork minimal with few elements, bold clean shapes, and little fine detail.
-Avoid ornate patterns, dense textures, or busy backgrounds.`
+    return `Keep the artwork SIMPLE: a few complete bold shapes that fit inside this silhouette.`
   }
 
   if (complexity <= 40) {
-    return `Design complexity: LIGHT.
-Use a clean, readable design with modest detail and simple supporting elements.
-Avoid heavy ornamentation or intricate pattern fills.`
+    return `Keep the artwork LIGHT: clean complete motifs that are fully visible inside this silhouette.`
   }
 
   if (complexity <= 60) {
-    return `Design complexity: BALANCED.
-Include a moderate level of detail and visual interest without making the design overly busy.
-Mix clear focal elements with restrained supporting detail.`
+    return `Keep the artwork BALANCED: a complete composition drawn for this silhouette, not a cropped texture.`
   }
 
   if (complexity <= 80) {
-    return `Design complexity: DETAILED.
-Include rich visual detail, layered elements, refined linework, and decorative accents while keeping the design readable.`
+    return `Keep the artwork DETAILED, but every motif must be complete and drawn to this silhouette. Detail comes from complete small objects, never from a cropped pattern.`
   }
 
-  return `Design complexity: COMPLEX.
-Create intricate, ornate artwork with fine detail, layered motifs, sophisticated pattern work, and visually dense composition.`
+  return `Keep the artwork COMPLEX, but composed for this silhouette. Use many complete small objects. No cropped fragments or repeating texture fills.`
+}
+
+function modeInstructions(mode: OutputMode): string {
+  return mode === 'uv'
+    ? `Use full vibrant color suitable for UV printing. Clean edges. Still draw complete objects, not a tiled texture.`
+    : `Draw in solid black (#000000) line art or solid black silhouettes of complete objects. Do not fill a region with hatching, stipple, honeycomb, repeating gears, or any other pattern.`
+}
+
+function partLine(partCount: number): string {
+  return partCount > 1
+    ? `Compose ONE complete design for a single silhouette. Do not draw multiple copies.`
+    : ''
+}
+
+function regionLine(regionCount: number): string {
+  if (regionCount <= 1) {
+    return `This stencil is ONE continuous silhouette. Pose ONE complete subject so the entire subject fits inside it. Nothing important may be sliced by the outline.`
+  }
+
+  return `This stencil has ${regionCount} SEPARATE regions, split by magenta. Treat each region as its own tiny sticker / coloring-book page. Draw one complete object in each region. Do not run one texture, pattern, or scene across multiple regions.`
+}
+
+function themeLine(description: string): string {
+  return `Theme to illustrate as complete objects (one object per region), never as a repeating texture, cropped photo, or pattern fill:
+${description}
+
+If that theme mentions gears, honeycomb, mesh, plates, or machinery, build each region as ONE complete gadget, vehicle, or character MADE FROM those parts. Do not tile those parts like wallpaper.`
 }
 
 export function buildPrompt(
@@ -43,42 +62,59 @@ export function buildPrompt(
   complexity: number,
   _aspectRatio?: string,
   partCount = 1,
+  hasReferenceImage = false,
+  strictInpaint = false,
+  regionCount = 0,
 ): string {
-  const modeInstructions =
-    mode === 'uv'
-      ? `Use full vibrant color suitable for UV printing.
-Keep rich color detail and clean edges.`
-      : `Use ONLY pure black (#000000) for all visible design pixels.
-Fill every shape, letter, and motif with solid black — no gray, no gradients.`
+  if (!hasReferenceImage) {
+    return `Create standalone printable artwork: a decal / UV print / engraving graphic.
 
-  const partLine =
-    partCount > 1
-      ? `This artwork will be stamped separately onto ${partCount} similar parts. Compose ONE design that fills a single stencil. Do not draw multiple copies.`
-      : ''
-
-  return `You are filling a BLANK STENCIL TEMPLATE with printable artwork.
-
-The attached image is the template:
-- The irregular LIGHT/BLANK shape is the ONLY area you may draw in. That shape is the complete canvas.
-- ${CHROMA_KEY.hex} magenta is OUTSIDE the stencil. Leave every magenta pixel magenta. Do not paint sky, ground, scenery, or background there.
-- Magenta holes inside the blank shape are cutouts (screws, gaps). Leave those magenta.
-
-CRITICAL composition rules:
-- Design the artwork TO FIT that blank silhouette, the way a custom inlay or decal is drawn for one specific shape.
-- The full subject must live inside the blank shape. Do not generate a rectangular scene, photo, or landscape and then crop it.
-- Shrink, stretch, and arrange the subject so it reads as a complete design within that outline.
-- Do not let important parts of the subject fall into the magenta.
+This is NOT a product mockup. The output will be printed or engraved onto a real object later.
 
 Design request: ${description}
 
 ${buildComplexityInstructions(complexity)}
-${partLine}
+${partLine(partCount)}
 
 Output requirements:
-- Return the template with artwork painted only in the blank stencil
-- Magenta regions must stay exactly ${CHROMA_KEY.hex} (RGB ${CHROMA_KEY.r}, ${CHROMA_KEY.g}, ${CHROMA_KEY.b})
-- Do NOT use ${CHROMA_KEY.hex} inside the artwork itself
-- Do NOT depict a physical object, product mockup, photograph, table, or surface
-- Do NOT add a rectangular border, frame, or box
-- ${modeInstructions}`
+- Return ONLY the decorative design artwork itself
+- Put the artwork on a perfectly uniform solid background of exactly ${CHROMA_KEY.hex}
+- Fill empty areas, holes, and gaps with that same solid ${CHROMA_KEY.hex}
+- Do NOT depict a physical object, mockup, table, or photograph
+- ${modeInstructions(mode)}`
+  }
+
+  const strictLine = strictInpaint
+    ? `CRITICAL RETRY: Previous results either ignored the stencil or filled it with a cropped texture. That is wrong.
+Edit the attached PNG in place. Magenta stays ${CHROMA_KEY.hex}. Draw complete objects inside each light region — never overlay a pattern and crop it.`
+    : `EDIT THE ATTACHED IMAGE IN PLACE. Update the input image. Do not generate a new rectangular picture. Do not change the input aspect ratio.`
+
+  return `${strictLine}
+
+Using the provided coloring-book stencil, paint this design:
+${themeLine(description)}
+
+How to read the PNG:
+- Light gray pixels plus the thin dark outline = the die-cut silhouette. This is the only place you may draw.
+- Magenta ${CHROMA_KEY.hex} is outside the part. Keep every magenta pixel exactly magenta.
+- Holes in the silhouette (counters in letters, screw holes) stay magenta.
+
+${regionLine(regionCount)}
+
+How to compose — this is NOT a mask over a larger picture:
+- Invent artwork whose silhouette IS this shape. Like a custom inlay or die-cut sticker.
+- GOOD: one complete character or object per region, fully visible, like a robot standing inside a letter.
+- BAD: filling the letters with a repeating gear/honeycomb/metal texture that gets sliced by the edges.
+- Scale each object so it sits fully inside its region with a small inner margin. No head, wing, wheel, or foot may touch or cross the dark outline. If it would not fit, draw a smaller object.
+- Do NOT place a larger illustration behind the stencil and cookie-cut it.
+
+${buildComplexityInstructions(complexity)}
+${partLine(partCount)}
+
+Output:
+- Return the same image, same width and height
+- Artwork only in the light silhouette
+- Magenta stays ${CHROMA_KEY.hex} (RGB ${CHROMA_KEY.r}, ${CHROMA_KEY.g}, ${CHROMA_KEY.b})
+- No mockup, product photo, table, or rectangular frame
+- ${modeInstructions(mode)}`
 }

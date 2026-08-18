@@ -154,7 +154,6 @@ export async function postProcessDesign(
   base64: string,
   mode: OutputMode,
   sourceBase64?: string,
-  templateAspectRatio?: number,
 ): Promise<string> {
   const img = await loadImageFromBase64(base64)
   const canvas = document.createElement('canvas')
@@ -231,9 +230,7 @@ export async function postProcessDesign(
   ctx.putImageData(imageData, 0, 0)
 
   if (sourceImageData) {
-    const aspect =
-      templateAspectRatio ?? sourceImageData.width / Math.max(sourceImageData.height, 1)
-    const fitted = fitDesignToMask(imageData, sourceImageData, aspect)
+    const fitted = fitDesignToMask(imageData, sourceImageData)
     canvas.width = fitted.width
     canvas.height = fitted.height
     const fittedCtx = canvas.getContext('2d')

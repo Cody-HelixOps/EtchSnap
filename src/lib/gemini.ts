@@ -1,7 +1,6 @@
 import { GoogleGenAI, Modality } from '@google/genai'
 import type { GenerateRequest } from '../types'
-import { pickGeminiAspectRatio, geminiAspectRatioValue } from './aspectRatio'
-import { createBlankTemplate } from './fitToMask'
+import { looksLikeStencilEdit, prepareEditTemplate, countStencilRegions } from './fitToMask'
 import { base64ToDataUrl, loadImageFromDataUrl, postProcessDesign } from './imageUtils'
 import { imageDataToDataUrl } from './trimUtils'
 import { buildPrompt } from './prompt'
@@ -17,26 +16,14 @@ async function imageToImageData(dataUrl: string) {
   return ctx.getImageData(0, 0, canvas.width, canvas.height)
 }
 
-export async function generateDesignWithGemini(
-  request: GenerateRequest,
+async function generateImage(
+  ai: GoogleGenAI,
+  model: string,
+  templateBase64: string,
+  prompt: string,
 ): Promise<string> {
-  const cropDataUrl = base64ToDataUrl(request.croppedImageBase64, request.mimeType)
-  const cropImageData = await imageToImageData(cropDataUrl)
-  const aspectRatioLabel = pickGeminiAspectRatio(cropImageData.width, cropImageData.height)
-  const aspectRatio = geminiAspectRatioValue(aspectRatioLabel)
-  const template = createBlankTemplate(cropImageData, aspectRatio)
-  const templateBase64 = imageDataToDataUrl(
-    new ImageData(
-      new Uint8ClampedArray(template.image.data),
-      template.image.width,
-      template.image.height,
-    ),
-  ).split(',')[1]
-
-  const ai = new GoogleGenAI({ apiKey: request.apiKey })
-
   const response = await ai.models.generateContent({
-    model: request.imageModel,
+    model,
     contents: [
       {
         role: 'user',
@@ -47,21 +34,12 @@ export async function generateDesignWithGemini(
               data: templateBase64,
             },
           },
-          {
-            text: buildPrompt(
-              request.description,
-              request.mode,
-              request.complexity,
-              undefined,
-              request.partCount ?? 1,
-            ),
-          },
+          { text: prompt },
         ],
       },
     ],
     config: {
       responseModalities: [Modality.TEXT, Modality.IMAGE],
-      imageConfig: { aspectRatio: aspectRatioLabel },
     },
   })
 
@@ -76,10 +54,60 @@ export async function generateDesignWithGemini(
     )
   }
 
+  return imagePart.inlineData.data
+}
+
+export async function generateDesignWithGemini(
+  request: GenerateRequest,
+): Promise<string> {
+  const cropDataUrl = base64ToDataUrl(request.croppedImageBase64, request.mimeType)
+  const cropImageData = await imageToImageData(cropDataUrl)
+  const template = prepareEditTemplate(cropImageData)
+  const regionCount = countStencilRegions(template)
+  const templateBase64 = imageDataToDataUrl(
+    new ImageData(
+      new Uint8ClampedArray(template.data),
+      template.width,
+      template.height,
+    ),
+  ).split(',')[1]
+
+  const ai = new GoogleGenAI({ apiKey: request.apiKey })
+  const prompt = buildPrompt(
+    request.description,
+    request.mode,
+    request.complexity,
+    undefined,
+    request.partCount ?? 1,
+    true,
+    false,
+    regionCount,
+  )
+
+  let rawBase64 = await generateImage(ai, request.imageModel, templateBase64, prompt)
+
+  try {
+    const generated = await imageToImageData(base64ToDataUrl(rawBase64, 'image/png'))
+    if (!looksLikeStencilEdit(generated, template)) {
+      const retryPrompt = buildPrompt(
+        request.description,
+        request.mode,
+        request.complexity,
+        undefined,
+        request.partCount ?? 1,
+        true,
+        true,
+        regionCount,
+      )
+      rawBase64 = await generateImage(ai, request.imageModel, templateBase64, retryPrompt)
+    }
+  } catch {
+    // Keep the first image if the retry path cannot decode/score it.
+  }
+
   return postProcessDesign(
-    imagePart.inlineData.data,
+    rawBase64,
     request.mode,
     request.croppedImageBase64,
-    aspectRatio,
   )
 }

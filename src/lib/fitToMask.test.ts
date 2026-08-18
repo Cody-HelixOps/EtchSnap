@@ -1,10 +1,12 @@
 import { CHROMA_KEY } from './chromaKey.ts'
 import {
-  createBlankTemplate,
+  countStencilRegions,
+  createPhotoStencil,
   createSilhouetteReference,
   fitDesignToMask,
-  layoutBlankTemplate,
-  TEMPLATE_CONTENT_SCALE,
+  looksLikeStencilEdit,
+  prepareEditTemplate,
+  stencilRespectScore,
 } from './fitToMask.ts'
 import type { PixelImage } from './isolateArtwork.ts'
 
@@ -55,89 +57,108 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
 }
 
-function testBlankTemplateLeavesMagentaAroundTheShape(): void {
-  const mask = createImage(200, 50)
-  fillRect(mask, 0, 0, 200, 50, 255, 255, 255, 255)
-
-  const { image, layout } = createBlankTemplate(mask, 21 / 9)
-
-  assert(image.width / image.height - 21 / 9 < 0.05, 'template canvas should match the model aspect ratio')
-  assert(layout.offsetY > 8, 'blank stencil must sit inside magenta margins, not fill the canvas')
-  assert(
-    mask.width / image.width <= TEMPLATE_CONTENT_SCALE + 0.02,
-    'the selected shape should be smaller than the template canvas',
-  )
-  assert(
-    sample(image, 4, 4).r === CHROMA_KEY.r && sample(image, 4, 4).b === CHROMA_KEY.b,
-    'template corners must stay magenta',
-  )
-  const inside = sample(image, layout.offsetX + 20, layout.offsetY + 20)
-  assert(inside.r > 240 && inside.g > 240 && inside.b > 240, 'the stencil interior must be a blank fill')
-}
-
-function testMappingReadsStencilRegionNotLetterbox(): void {
-  const mask = createImage(200, 50)
-  fillRect(mask, 0, 0, 200, 50, 255, 255, 255, 255)
-  const layout = layoutBlankTemplate(mask.width, mask.height, 21 / 9)
-  const generated = createImage(layout.canvasWidth, layout.canvasHeight, 255, 0, 0, 255)
-  fillRect(
-    generated,
-    layout.offsetX,
-    layout.offsetY,
-    layout.contentWidth,
-    layout.contentHeight,
-    0,
-    80,
-    0,
-    255,
-  )
-
-  const fitted = fitDesignToMask(generated, mask, 21 / 9)
-  const pixel = sample(fitted, 100, 25)
-  assert(pixel.g > 60 && pixel.r < 40, 'output should come from the stencil region, not the magenta letterbox')
-  assert(sample(fitted, 0, 0).a > 200, 'mapped design should still fill the selected mask')
-}
-
-function testMaskHolesStayEmpty(): void {
+function testSameFramingClipKeepsHolesEmpty(): void {
   const mask = createImage(120, 40)
   fillRect(mask, 10, 8, 100, 24, 10, 10, 10, 255)
   fillRect(mask, 55, 16, 10, 8, 0, 0, 0, 0)
 
-  const { image, layout } = createBlankTemplate(mask, 16 / 9)
-  const hole = sample(image, layout.offsetX + 60, layout.offsetY + 20)
-  assert(
-    hole.r === CHROMA_KEY.r && hole.b === CHROMA_KEY.b,
-    'cutouts in the selection must stay magenta on the blank template',
-  )
+  const design = createImage(120, 40, 0, 0, 0, 255)
+  const fitted = fitDesignToMask(design, mask)
 
-  const generated = createImage(layout.canvasWidth, layout.canvasHeight, 0, 0, 0, 255)
-  const fitted = fitDesignToMask(generated, mask, 16 / 9)
   assert(fitted.width === 120 && fitted.height === 40, 'fitted design must match the selected crop size')
   assert(sample(fitted, 2, 2).a === 0, 'pixels outside the selection must be transparent')
   assert(sample(fitted, 60, 20).a === 0, 'holes inside the selection must stay transparent')
   assert(sample(fitted, 20, 20).a > 200, 'pixels inside the selection must keep the design')
 }
 
-function testSilhouetteUsesMaskShape(): void {
-  const mask = createImage(80, 30)
-  fillRect(mask, 8, 6, 64, 18, 40, 40, 40, 255)
+function testEditTemplateIsColoringBookStencil(): void {
+  const mask = createImage(200, 60)
+  fillRect(mask, 20, 10, 160, 40, 40, 90, 160, 255)
+  fillRect(mask, 90, 20, 20, 20, 0, 0, 0, 0)
 
-  const silhouette = createSilhouetteReference(mask)
-  const inside = sample(silhouette, 20, 12)
-  const outside = sample(silhouette, 1, 1)
+  const template = prepareEditTemplate(mask, 200)
+  assert(template.width === 200 && template.height === 60, 'native-size stencil should keep the crop framing')
+  const inside = sample(template, 40, 30)
+  const hole = sample(template, 100, 30)
+  const outside = sample(template, 2, 2)
+  assert(inside.r > 240 && inside.g > 240, 'selected area should be a blank coloring-book fill')
+  assert(hole.r === CHROMA_KEY.r && hole.b === CHROMA_KEY.b, 'cutouts must stay magenta')
+  assert(outside.r === CHROMA_KEY.r && outside.b === CHROMA_KEY.b, 'outside must stay magenta')
+}
 
-  assert(inside.r > 240 && inside.g > 240 && inside.b > 240, 'selected area should be blank in the silhouette')
-  assert(
-    outside.r === CHROMA_KEY.r && outside.g === CHROMA_KEY.g && outside.b === CHROMA_KEY.b,
-    'outside the selection should be chroma key',
-  )
+function testPhotoStencilDrawsOutline(): void {
+  const mask = createImage(40, 20)
+  fillRect(mask, 8, 4, 24, 12, 200, 180, 40, 255)
+  const stencil = createPhotoStencil(mask)
+  const edge = sample(stencil, 8, 8)
+  const inner = sample(stencil, 20, 10)
+  assert(edge.r < 40 && edge.g < 40, 'silhouette edge should be outlined')
+  assert(inner.r === 200 && inner.g === 180, 'interior photo pixels should stay intact')
+}
+
+function testRespectScoreDetectsEditedStencil(): void {
+  const mask = createImage(80, 40)
+  fillRect(mask, 8, 8, 64, 24, 255, 255, 255, 255)
+  const template = createSilhouetteReference(mask)
+  const edited = {
+    data: new Uint8ClampedArray(template.data),
+    width: template.width,
+    height: template.height,
+  }
+  fillRect(edited, 8, 8, 64, 24, 20, 20, 20, 255)
+  const score = stencilRespectScore(edited, template)
+  assert(score.respect > 0.9, 'magenta around an edited stencil should be preserved')
+  assert(score.fill > 0.9, 'blank stencil pixels should be filled with artwork')
+}
+
+function testRespectScoreDetectsFullScene(): void {
+  const mask = createImage(80, 40)
+  fillRect(mask, 8, 8, 64, 24, 255, 255, 255, 255)
+  const template = createSilhouetteReference(mask)
+  const scene = createImage(80, 40, 30, 80, 20, 255)
+  const score = stencilRespectScore(scene, template)
+  assert(score.respect < 0.2, 'a full-bleed scene should fail stencil respect')
+}
+
+function testLooksLikeStencilEditAcceptsInPlacePaint(): void {
+  const mask = createImage(80, 40)
+  fillRect(mask, 8, 8, 64, 24, 180, 120, 40, 255)
+  const template = createPhotoStencil(mask)
+  const edited = {
+    data: new Uint8ClampedArray(template.data),
+    width: template.width,
+    height: template.height,
+  }
+  fillRect(edited, 10, 10, 60, 20, 20, 20, 20, 255)
+  assert(looksLikeStencilEdit(edited, template), 'in-place paint on the silhouette should count as a stencil edit')
+}
+
+function testLooksLikeStencilEditRejectsFullScene(): void {
+  const mask = createImage(80, 40)
+  fillRect(mask, 8, 8, 64, 24, 180, 120, 40, 255)
+  const template = createPhotoStencil(mask)
+  const scene = createImage(80, 40, 30, 80, 20, 255)
+  assert(!looksLikeStencilEdit(scene, template), 'a full-bleed scene should not count as a stencil edit')
+}
+
+function testCountStencilRegionsSplitsLetters(): void {
+  const mask = createImage(80, 20)
+  fillRect(mask, 2, 4, 16, 12, 255, 255, 255, 255)
+  fillRect(mask, 32, 4, 16, 12, 255, 255, 255, 255)
+  fillRect(mask, 62, 4, 16, 12, 255, 255, 255, 255)
+  const template = createSilhouetteReference(mask)
+  assert(countStencilRegions(template) === 3, 'disconnected letters should count as separate stencil regions')
 }
 
 const tests = [
-  ['blank template leaves magenta around the shape', testBlankTemplateLeavesMagentaAroundTheShape],
-  ['mapping reads stencil region not letterbox', testMappingReadsStencilRegionNotLetterbox],
-  ['mask holes stay empty', testMaskHolesStayEmpty],
-  ['silhouette uses mask shape', testSilhouetteUsesMaskShape],
+  ['same framing clip keeps holes empty', testSameFramingClipKeepsHolesEmpty],
+  ['edit template is coloring-book stencil', testEditTemplateIsColoringBookStencil],
+  ['photo stencil draws outline', testPhotoStencilDrawsOutline],
+  ['respect score detects edited stencil', testRespectScoreDetectsEditedStencil],
+  ['respect score detects full scene', testRespectScoreDetectsFullScene],
+  ['looks like stencil edit accepts in-place paint', testLooksLikeStencilEditAcceptsInPlacePaint],
+  ['looks like stencil edit rejects full scene', testLooksLikeStencilEditRejectsFullScene],
+  ['count stencil regions splits letters', testCountStencilRegionsSplitsLetters],
 ] as const
 
 let failed = 0
