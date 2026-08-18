@@ -2,6 +2,10 @@ import type { Point, SelectionPath } from '../types'
 
 const EPSILON = 1e-6
 
+export interface MergeSelectionOptions {
+  mergeNearbyGap?: number
+}
+
 function getBounds(points: Point[]) {
   let minX = Number.POSITIVE_INFINITY
   let minY = Number.POSITIVE_INFINITY
@@ -85,6 +89,38 @@ function pointInPolygonOrOnEdge(point: Point, polygon: Point[]): boolean {
   return inside
 }
 
+function pointDistance(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function pointToSegmentDistance(point: Point, start: Point, end: Point): number {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  if (Math.abs(dx) <= EPSILON && Math.abs(dy) <= EPSILON) {
+    return pointDistance(point, start)
+  }
+
+  const t = Math.max(
+    0,
+    Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)),
+  )
+  return pointDistance(point, {
+    x: start.x + dx * t,
+    y: start.y + dy * t,
+  })
+}
+
+function segmentDistance(a1: Point, a2: Point, b1: Point, b2: Point): number {
+  if (segmentsIntersectOrTouch(a1, a2, b1, b2)) return 0
+
+  return Math.min(
+    pointToSegmentDistance(a1, b1, b2),
+    pointToSegmentDistance(a2, b1, b2),
+    pointToSegmentDistance(b1, a1, a2),
+    pointToSegmentDistance(b2, a1, a2),
+  )
+}
+
 function regionsOverlapOrTouch(a: SelectionPath, b: SelectionPath): boolean {
   const aBounds = getBounds(a.points)
   const bBounds = getBounds(b.points)
@@ -108,6 +144,29 @@ function regionsOverlapOrTouch(a: SelectionPath, b: SelectionPath): boolean {
   }
 
   return pointInPolygonOrOnEdge(a.points[0], b.points) || pointInPolygonOrOnEdge(b.points[0], a.points)
+}
+
+function regionGapWithin(a: SelectionPath, b: SelectionPath, maxGap: number): boolean {
+  if (maxGap <= 0) return false
+  if (regionsOverlapOrTouch(a, b)) return true
+
+  const aBounds = getBounds(a.points)
+  const bBounds = getBounds(b.points)
+  const gapX = Math.max(0, bBounds.minX - aBounds.maxX, aBounds.minX - bBounds.maxX)
+  const gapY = Math.max(0, bBounds.minY - aBounds.maxY, aBounds.minY - bBounds.maxY)
+  if (Math.hypot(gapX, gapY) > maxGap) return false
+
+  for (let i = 0; i < a.points.length; i += 1) {
+    const a1 = a.points[i]
+    const a2 = a.points[(i + 1) % a.points.length]
+    for (let j = 0; j < b.points.length; j += 1) {
+      const b1 = b.points[j]
+      const b2 = b.points[(j + 1) % b.points.length]
+      if (segmentDistance(a1, a2, b1, b2) <= maxGap) return true
+    }
+  }
+
+  return false
 }
 
 function fillInternalHoles(mask: Uint8Array, width: number, height: number): void {
@@ -282,6 +341,73 @@ function simplifyPath(points: Point[], epsilon: number): Point[] {
   return [points[0], points[end]]
 }
 
+function countConnectedComponents(mask: Uint8Array, width: number, height: number): number {
+  const visited = new Uint8Array(mask.length)
+  const queue = new Int32Array(mask.length)
+  let components = 0
+
+  for (let start = 0; start < mask.length; start += 1) {
+    if (!mask[start] || visited[start]) continue
+    components += 1
+    if (components > 1) return components
+
+    let head = 0
+    let tail = 0
+    queue[tail++] = start
+    visited[start] = 1
+
+    while (head < tail) {
+      const index = queue[head++]
+      const x = index % width
+      const y = Math.floor(index / width)
+
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nx = x + dx
+        const ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+        const next = ny * width + nx
+        if (!mask[next] || visited[next]) continue
+        visited[next] = 1
+        queue[tail++] = next
+      }
+    }
+  }
+
+  return components
+}
+
+function buildConvexHull(points: Point[]): Point[] {
+  const uniquePoints = [...new Map(points.map((point) => [`${point.x}:${point.y}`, point])).values()]
+  if (uniquePoints.length <= 2) return uniquePoints
+
+  uniquePoints.sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x))
+
+  const buildHalf = (source: Point[]) => {
+    const hull: Point[] = []
+    for (const point of source) {
+      while (
+        hull.length >= 2 &&
+        crossProduct(hull[hull.length - 2], hull[hull.length - 1], point) <= EPSILON
+      ) {
+        hull.pop()
+      }
+      hull.push(point)
+    }
+    return hull
+  }
+
+  const lower = buildHalf(uniquePoints)
+  const upper = buildHalf([...uniquePoints].reverse())
+  lower.pop()
+  upper.pop()
+  return [...lower, ...upper]
+}
+
 function mergeRegionGroup(regions: SelectionPath[]): SelectionPath | null {
   const allPoints = regions.flatMap((region) => region.points)
   if (allPoints.length === 0) return null
@@ -303,6 +429,10 @@ function mergeRegionGroup(regions: SelectionPath[]): SelectionPath | null {
   }
 
   fillInternalHoles(mask, width, height)
+  if (countConnectedComponents(mask, width, height) > 1) {
+    const hull = buildConvexHull(allPoints)
+    return hull.length >= 3 ? { points: hull, closed: true } : null
+  }
 
   const boundary = traceBoundary(mask, width, height)
   if (boundary.length < 3) return null
@@ -326,8 +456,10 @@ function mergeRegionGroup(regions: SelectionPath[]): SelectionPath | null {
 export function mergeSelectionRegions(
   existingRegions: SelectionPath[],
   nextRegion: SelectionPath,
+  options: MergeSelectionOptions = {},
 ): SelectionPath[] {
   if (existingRegions.length === 0) return [nextRegion]
+  const mergeNearbyGap = options.mergeNearbyGap ?? 0
 
   const overlapping = new Set<number>()
   const queue: SelectionPath[] = [nextRegion]
@@ -338,7 +470,12 @@ export function mergeSelectionRegions(
 
     for (let index = 0; index < existingRegions.length; index += 1) {
       if (overlapping.has(index)) continue
-      if (!regionsOverlapOrTouch(candidate, existingRegions[index])) continue
+      if (
+        !regionsOverlapOrTouch(candidate, existingRegions[index]) &&
+        !regionGapWithin(candidate, existingRegions[index], mergeNearbyGap)
+      ) {
+        continue
+      }
       overlapping.add(index)
       queue.push(existingRegions[index])
     }
