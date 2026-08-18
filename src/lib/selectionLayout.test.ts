@@ -164,7 +164,7 @@ function testNearbyDisjointRegionsCanMergeForWandSelections(): void {
   assert(merged.length === 1, 'nearby disjoint wand regions should merge into one selection')
   const bounds = getPathBounds(merged[0].points)
   assert(bounds.x === 10, 'merged wand selection should keep the left-most bound')
-  assert(bounds.width >= 72, 'merged wand selection should cover both separated regions')
+  assert(bounds.width >= 71, 'merged wand selection should cover both separated regions')
   assert(bounds.height >= 31, 'merged wand selection should cover the full merged height')
 }
 
