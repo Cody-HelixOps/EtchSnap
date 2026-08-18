@@ -7,7 +7,19 @@ const CARDINAL_DIRECTIONS = [
   [0, 1],
   [0, -1],
 ] as const
+const EIGHT_DIRECTIONS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+] as const
 const BRIDGE_RADIUS_GAP_DIVISOR = 6
+const ALIGNED_OVERLAP_RATIO = 0.4
+const ALIGNED_GAP_RATIO = 0.85
 
 export interface MergeSelectionOptions {
   mergeNearbyGap?: number
@@ -77,7 +89,7 @@ function segmentsIntersectOrTouch(a1: Point, a2: Point, b1: Point, b2: Point): b
 }
 
 function pointInPolygonOrOnEdge(point: Point, polygon: Point[]): boolean {
-  let inside = false
+  let winding = 0
 
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
     const start = polygon[j]
@@ -85,15 +97,14 @@ function pointInPolygonOrOnEdge(point: Point, polygon: Point[]): boolean {
 
     if (pointOnSegment(point, start, end)) return true
 
-    const intersects =
-      (end.y > point.y) !== (start.y > point.y) &&
-      point.x <
-        ((start.x - end.x) * (point.y - end.y)) / (start.y - end.y || Number.EPSILON) + end.x
-
-    if (intersects) inside = !inside
+    if (start.y <= point.y) {
+      if (end.y > point.y && crossProduct(start, end, point) > 0) winding += 1
+    } else if (end.y <= point.y && crossProduct(start, end, point) < 0) {
+      winding -= 1
+    }
   }
 
-  return inside
+  return winding !== 0
 }
 
 function pointDistance(a: Point, b: Point): number {
@@ -178,6 +189,59 @@ function regionGapWithin(a: SelectionPath, b: SelectionPath, maxGap: number): bo
   }
 
   return false
+}
+
+function alignedGapLimit(a: SelectionPath, b: SelectionPath, maxGap: number): number {
+  const aBounds = getBounds(a.points)
+  const bBounds = getBounds(b.points)
+  const aWidth = Math.max(1, aBounds.maxX - aBounds.minX)
+  const aHeight = Math.max(1, aBounds.maxY - aBounds.minY)
+  const bWidth = Math.max(1, bBounds.maxX - bBounds.minX)
+  const bHeight = Math.max(1, bBounds.maxY - bBounds.minY)
+  const gapX = Math.max(0, bBounds.minX - aBounds.maxX, aBounds.minX - bBounds.maxX)
+  const gapY = Math.max(0, bBounds.minY - aBounds.maxY, aBounds.minY - bBounds.maxY)
+  const yOverlap = Math.min(aBounds.maxY, bBounds.maxY) - Math.max(aBounds.minY, bBounds.minY)
+  const xOverlap = Math.min(aBounds.maxX, bBounds.maxX) - Math.max(aBounds.minX, bBounds.minX)
+
+  let allowed = maxGap
+  if (yOverlap > Math.min(aHeight, bHeight) * ALIGNED_OVERLAP_RATIO) {
+    allowed = Math.max(allowed, Math.min(aWidth, bWidth) * ALIGNED_GAP_RATIO)
+  }
+  if (xOverlap > Math.min(aWidth, bWidth) * ALIGNED_OVERLAP_RATIO) {
+    allowed = Math.max(allowed, Math.min(aHeight, bHeight) * ALIGNED_GAP_RATIO)
+  }
+
+  if (gapX <= allowed && gapY <= allowed) return allowed
+  return maxGap
+}
+
+function compatibleMask(region: SelectionPath, width: number, height: number): boolean {
+  return !!region.mask && region.maskWidth === width && region.maskHeight === height
+}
+
+function masksOverlapOrNear(a: SelectionPath, b: SelectionPath): boolean {
+  const width = a.maskWidth
+  const height = a.maskHeight
+  if (!width || !height || !compatibleMask(a, width, height) || !compatibleMask(b, width, height)) {
+    return false
+  }
+
+  const aMask = a.mask
+  const bMask = b.mask
+  if (!aMask || !bMask) return false
+
+  for (let index = 0; index < aMask.length; index += 1) {
+    if (aMask[index] && bMask[index]) return true
+  }
+
+  return false
+}
+
+function regionsShouldMerge(a: SelectionPath, b: SelectionPath, maxGap: number): boolean {
+  if (regionsOverlapOrTouch(a, b)) return true
+  if (masksOverlapOrNear(a, b)) return true
+  if (maxGap <= 0) return false
+  return regionGapWithin(a, b, alignedGapLimit(a, b, maxGap))
 }
 
 function fillInternalHoles(mask: Uint8Array, width: number, height: number): void {
@@ -362,7 +426,7 @@ function countConnectedComponents(mask: Uint8Array, width: number, height: numbe
       const x = index % width
       const y = Math.floor(index / width)
 
-      for (const [dx, dy] of CARDINAL_DIRECTIONS) {
+      for (const [dx, dy] of EIGHT_DIRECTIONS) {
         const nx = x + dx
         const ny = y + dy
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
@@ -453,6 +517,10 @@ function findClosestBridge(a: SelectionPath, b: SelectionPath): { start: Point; 
   return { start: bestStart, end: bestEnd, distance: bestDistance }
 }
 
+function pairMergeGap(a: SelectionPath, b: SelectionPath, maxGap: number): number {
+  return alignedGapLimit(a, b, maxGap)
+}
+
 function connectNearbyRegions(
   mask: Uint8Array,
   width: number,
@@ -462,18 +530,112 @@ function connectNearbyRegions(
   regions: SelectionPath[],
   maxGap: number,
 ): void {
-  if (maxGap <= 0) return
+  if (maxGap <= 0 && regions.length < 2) return
 
-  // Keep the connector much narrower than the allowed gap so nearby wand merges
-  // join cleanly without ballooning into the unselected space between regions.
-  const bridgeRadius = Math.max(1, Math.floor(maxGap / BRIDGE_RADIUS_GAP_DIVISOR))
   for (let i = 0; i < regions.length; i += 1) {
     for (let j = i + 1; j < regions.length; j += 1) {
-      if (!regionGapWithin(regions[i], regions[j], maxGap)) continue
+      const allowed = pairMergeGap(regions[i], regions[j], maxGap)
+      if (!regionsShouldMerge(regions[i], regions[j], maxGap)) continue
       const bridge = findClosestBridge(regions[i], regions[j])
-      if (bridge.distance > maxGap) continue
+      if (bridge.distance > allowed) continue
+      const bridgeRadius = Math.max(2, Math.floor(Math.max(allowed, bridge.distance) / BRIDGE_RADIUS_GAP_DIVISOR))
       drawBridge(mask, width, height, offsetX, offsetY, bridge.start, bridge.end, bridgeRadius)
     }
+  }
+}
+
+function forceConnectRegions(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  offsetX: number,
+  offsetY: number,
+  regions: SelectionPath[],
+  maxGap: number,
+): void {
+  let components = countConnectedComponents(mask, width, height)
+  let guard = 0
+  const maxAttempts = Math.max(4, regions.length * regions.length)
+
+  while (components > 1 && guard < maxAttempts) {
+    guard += 1
+    let best: { start: Point; end: Point; distance: number } | null = null
+
+    for (let i = 0; i < regions.length; i += 1) {
+      for (let j = i + 1; j < regions.length; j += 1) {
+        const bridge = findClosestBridge(regions[i], regions[j])
+        if (!best || bridge.distance < best.distance) best = bridge
+      }
+    }
+
+    if (!best) break
+    const bridgeRadius = Math.max(
+      2,
+      Math.ceil(best.distance / 8),
+      Math.floor(Math.max(maxGap, best.distance) / BRIDGE_RADIUS_GAP_DIVISOR),
+    )
+    drawBridge(mask, width, height, offsetX, offsetY, best.start, best.end, bridgeRadius)
+    fillInternalHoles(mask, width, height)
+    components = countConnectedComponents(mask, width, height)
+  }
+}
+
+function stampRegionMasks(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  offsetX: number,
+  offsetY: number,
+  regions: SelectionPath[],
+): void {
+  for (const region of regions) {
+    if (!region.mask || !region.maskWidth || !region.maskHeight) continue
+    for (let y = 0; y < height; y += 1) {
+      const srcY = y + offsetY
+      if (srcY < 0 || srcY >= region.maskHeight) continue
+      for (let x = 0; x < width; x += 1) {
+        const srcX = x + offsetX
+        if (srcX < 0 || srcX >= region.maskWidth) continue
+        if (region.mask[srcY * region.maskWidth + srcX]) {
+          mask[y * width + x] = 1
+        }
+      }
+    }
+  }
+}
+
+function attachMergedMask(
+  points: Point[],
+  crop: Uint8Array,
+  width: number,
+  height: number,
+  offsetX: number,
+  offsetY: number,
+  regions: SelectionPath[],
+): SelectionPath {
+  const source = regions.find((region) => region.mask && region.maskWidth && region.maskHeight)
+  if (!source?.mask || !source.maskWidth || !source.maskHeight) {
+    return { points, closed: true }
+  }
+
+  const full = new Uint8Array(source.maskWidth * source.maskHeight)
+  for (let y = 0; y < height; y += 1) {
+    const destY = y + offsetY
+    if (destY < 0 || destY >= source.maskHeight) continue
+    for (let x = 0; x < width; x += 1) {
+      if (!crop[y * width + x]) continue
+      const destX = x + offsetX
+      if (destX < 0 || destX >= source.maskWidth) continue
+      full[destY * source.maskWidth + destX] = 1
+    }
+  }
+
+  return {
+    points,
+    closed: true,
+    mask: full,
+    maskWidth: source.maskWidth,
+    maskHeight: source.maskHeight,
   }
 }
 
@@ -499,17 +661,18 @@ function mergeRegionGroup(
       }
     }
   }
+  stampRegionMasks(mask, width, height, offsetX, offsetY, regions)
 
   fillInternalHoles(mask, width, height)
   const mergeNearbyGap = options.mergeNearbyGap ?? 0
-  if (mergeNearbyGap > 0) {
-    let components = countConnectedComponents(mask, width, height)
-    if (components > 1) {
-      connectNearbyRegions(mask, width, height, offsetX, offsetY, regions, mergeNearbyGap)
-      fillInternalHoles(mask, width, height)
-      components = countConnectedComponents(mask, width, height)
-    }
-    if (components > 1) return null
+  let components = countConnectedComponents(mask, width, height)
+  if (components > 1) {
+    connectNearbyRegions(mask, width, height, offsetX, offsetY, regions, mergeNearbyGap)
+    fillInternalHoles(mask, width, height)
+    components = countConnectedComponents(mask, width, height)
+  }
+  if (components > 1) {
+    forceConnectRegions(mask, width, height, offsetX, offsetY, regions, mergeNearbyGap)
   }
 
   const boundary = traceBoundary(mask, width, height)
@@ -528,7 +691,9 @@ function mergeRegionGroup(
     y: point.y + offsetY,
   }))
 
-  return points.length >= 3 ? { points, closed: true } : null
+  return points.length >= 3
+    ? attachMergedMask(points, mask, width, height, offsetX, offsetY, regions)
+    : null
 }
 
 export function mergeSelectionRegions(
@@ -548,7 +713,7 @@ export function mergeSelectionRegions(
 
     for (let index = 0; index < existingRegions.length; index += 1) {
       if (overlapping.has(index)) continue
-      if (!regionGapWithin(candidate, existingRegions[index], mergeNearbyGap)) {
+      if (!regionsShouldMerge(candidate, existingRegions[index], mergeNearbyGap)) {
         continue
       }
       overlapping.add(index)

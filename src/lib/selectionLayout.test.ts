@@ -1,6 +1,7 @@
 import { buildOverlayRegions, getLargestRegion } from './selectionLayout.ts'
 import { mergeSelectionRegions } from './selectionMerge.ts'
-import type { Point, Selection } from '../types.ts'
+import { magicWandSelection } from './magicWand.ts'
+import type { Point, Selection, SelectionPath } from '../types.ts'
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -168,12 +169,191 @@ function testNearbyDisjointRegionsCanMergeForWandSelections(): void {
   assert(bounds.height >= 31, 'merged wand selection should cover the full merged height')
 }
 
+function makeJaggedBlob(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  amplitude: number,
+): SelectionPath {
+  const points: Point[] = []
+  const steps = 18
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps
+    points.push({ x: x0 + (x1 - x0) * t, y: y0 + (i % 2 === 0 ? 0 : amplitude) })
+  }
+  for (let i = steps; i >= 0; i -= 1) {
+    const t = i / steps
+    points.push({ x: x0 + (x1 - x0) * t, y: y1 - (i % 2 === 0 ? 0 : amplitude) })
+  }
+  return { points, closed: true }
+}
+
+function testJaggedOverlappingHandleRegionsMerge(): void {
+  const merged = mergeSelectionRegions(
+    [makeJaggedBlob(40, 40, 280, 140, 18)],
+    makeJaggedBlob(200, 44, 460, 148, 18),
+    { mergeNearbyGap: 19.2 },
+  )
+  assert(merged.length === 1, `jagged overlapping handle regions should merge, got ${merged.length}`)
+}
+
+function testCrossingLightningRegionsMerge(): void {
+  const merged = mergeSelectionRegions(
+    [
+      {
+        points: [
+          { x: 20, y: 80 },
+          { x: 80, y: 20 },
+          { x: 140, y: 90 },
+          { x: 200, y: 30 },
+          { x: 260, y: 100 },
+          { x: 250, y: 150 },
+          { x: 190, y: 80 },
+          { x: 130, y: 160 },
+          { x: 70, y: 90 },
+          { x: 30, y: 150 },
+        ],
+        closed: true,
+      },
+    ],
+    {
+      points: [
+        { x: 180, y: 70 },
+        { x: 240, y: 10 },
+        { x: 300, y: 80 },
+        { x: 360, y: 20 },
+        { x: 420, y: 90 },
+        { x: 410, y: 140 },
+        { x: 350, y: 70 },
+        { x: 290, y: 150 },
+        { x: 230, y: 80 },
+        { x: 190, y: 140 },
+      ],
+      closed: true,
+    },
+    { mergeNearbyGap: 19.2 },
+  )
+  assert(merged.length === 1, `crossing lightning regions should merge, got ${merged.length}`)
+}
+
+function createImageData(width: number, height: number): ImageData {
+  return {
+    data: new Uint8ClampedArray(width * height * 4),
+    width,
+    height,
+    colorSpace: 'srgb',
+  } as ImageData
+}
+
+function fillRect(
+  image: ImageData,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  r: number,
+  g: number,
+  b: number,
+): void {
+  for (let py = y; py < y + height; py += 1) {
+    for (let px = x; px < x + width; px += 1) {
+      const index = (py * image.width + px) * 4
+      image.data[index] = r
+      image.data[index + 1] = g
+      image.data[index + 2] = b
+      image.data[index + 3] = 255
+    }
+  }
+}
+
+function toWandRegion(hit: NonNullable<ReturnType<typeof magicWandSelection>>): SelectionPath {
+  return {
+    points: hit.points,
+    closed: true,
+    mask: hit.mask,
+    maskWidth: hit.width,
+    maskHeight: hit.height,
+  }
+}
+
+function testNoisyHandleWandClicksMerge(): void {
+  const image = createImageData(420, 160)
+  fillRect(image, 0, 0, 420, 160, 168, 90, 196)
+
+  for (let y = 50; y < 110; y += 1) {
+    for (let x = 40; x < 380; x += 1) {
+      const noise = ((x * 37 + y * 17) % 13) - 6
+      const shade = 28 + noise
+      const index = (y * image.width + x) * 4
+      image.data[index] = shade
+      image.data[index + 1] = shade
+      image.data[index + 2] = shade
+      image.data[index + 3] = 255
+    }
+  }
+
+  const left = magicWandSelection(image, 110, 80, { colorTolerance: 32 })
+  const right = magicWandSelection(image, 300, 80, { colorTolerance: 32 })
+  assert(!!left && left.points.length >= 3, 'left noisy wand click should select')
+  assert(!!right && right.points.length >= 3, 'right noisy wand click should select')
+
+  const merged = mergeSelectionRegions([toWandRegion(left!)], toWandRegion(right!), {
+    mergeNearbyGap: Math.max(12, 32 * 0.6),
+  })
+  assert(merged.length === 1, `two wand clicks on the same handle should merge, got ${merged.length}`)
+}
+
+function testChainedWandClicksOnHandleStayOneRegion(): void {
+  const image = createImageData(420, 160)
+  fillRect(image, 0, 0, 420, 160, 168, 90, 196)
+
+  for (let y = 50; y < 110; y += 1) {
+    for (let x = 40; x < 380; x += 1) {
+      const noise = ((x * 37 + y * 17) % 13) - 6
+      const shade = 28 + noise
+      const index = (y * image.width + x) * 4
+      image.data[index] = shade
+      image.data[index + 1] = shade
+      image.data[index + 2] = shade
+      image.data[index + 3] = 255
+    }
+  }
+
+  const clicks = [110, 180, 260, 330]
+  const hits = clicks.map((x) => magicWandSelection(image, x, 80, { colorTolerance: 32 }))
+  assert(hits.every((hit) => hit && hit.points.length >= 3), 'every wand click should select')
+
+  let regions: SelectionPath[] = [toWandRegion(hits[0]!)]
+  for (let index = 1; index < hits.length; index += 1) {
+    regions = mergeSelectionRegions(regions, toWandRegion(hits[index]!), {
+      mergeNearbyGap: Math.max(12, 32 * 0.6),
+    })
+  }
+
+  assert(regions.length === 1, `chained wand clicks on one handle should stay one region, got ${regions.length}`)
+}
+
+function testFarApartWandClicksStaySeparate(): void {
+  const merged = mergeSelectionRegions(
+    [makeJaggedBlob(10, 10, 80, 70, 6)],
+    makeJaggedBlob(220, 10, 300, 70, 6),
+    { mergeNearbyGap: 19.2 },
+  )
+  assert(merged.length === 2, `far-apart objects should stay separate, got ${merged.length}`)
+}
+
 const tests = [
   ['largest region picked', testLargestRegionPicked],
   ['overlay combines regions into single object', testOverlayCombinesRegionsIntoSingleObject],
   ['overlapping regions merge into one selection', testOverlappingRegionsMergeIntoSingleSelection],
   ['disjoint regions stay separate', testDisjointRegionsStaySeparate],
   ['nearby disjoint regions can merge for wand selections', testNearbyDisjointRegionsCanMergeForWandSelections],
+  ['jagged overlapping handle regions merge', testJaggedOverlappingHandleRegionsMerge],
+  ['crossing lightning regions merge', testCrossingLightningRegionsMerge],
+  ['noisy handle wand clicks merge', testNoisyHandleWandClicksMerge],
+  ['chained wand clicks on a handle stay one region', testChainedWandClicksOnHandleStayOneRegion],
+  ['far-apart wand clicks stay separate', testFarApartWandClicksStaySeparate],
 ] as const
 
 let failed = 0

@@ -248,12 +248,12 @@ export function ImageSelector({
       return
     }
 
-    const points = magicWandSelection(imageData, point.x, point.y, {
+    const hit = magicWandSelection(imageData, point.x, point.y, {
       colorTolerance: wandTolerance,
       edgeThreshold: getMagicWandEdgeThreshold(wandTolerance),
     })
 
-    if (!points) {
+    if (!hit) {
       setWandError(
         'Could not detect a bounded surface there. Click the object itself (not the pegboard/background), or adjust sensitivity.',
       )
@@ -261,7 +261,13 @@ export function ImageSelector({
       return
     }
 
-    const closedPath: SelectionPath = { points, closed: true }
+    const closedPath: SelectionPath = {
+      points: hit.points,
+      closed: true,
+      mask: hit.mask,
+      maskWidth: hit.width,
+      maskHeight: hit.height,
+    }
     if (!applyRegion(closedPath, append)) {
       setWandError('That area is too small. Click a larger surface or lower sensitivity.')
       return

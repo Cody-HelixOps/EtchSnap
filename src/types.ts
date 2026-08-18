@@ -9,6 +9,9 @@ export interface Point {
 export interface SelectionPath {
   points: Point[]
   closed: boolean
+  mask?: Uint8Array
+  maskWidth?: number
+  maskHeight?: number
 }
 
 export interface Selection {

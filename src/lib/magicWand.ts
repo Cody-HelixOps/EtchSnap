@@ -484,12 +484,19 @@ function simplifyPath(points: Point[], epsilon: number): Point[] {
   return [points[0], points[end]]
 }
 
+export interface MagicWandHit {
+  points: Point[]
+  mask: Uint8Array
+  width: number
+  height: number
+}
+
 export function magicWandSelection(
   imageData: ImageData,
   seedX: number,
   seedY: number,
   options: MagicWandOptions = {},
-): Point[] | null {
+): MagicWandHit | null {
   const colorTolerance = options.colorTolerance ?? 32
   const edgeThreshold = options.edgeThreshold ?? getMagicWandEdgeThreshold(colorTolerance)
   const simplifyEpsilon = options.simplifyEpsilon ?? 2.5
@@ -516,7 +523,13 @@ export function magicWandSelection(
         ? Math.max(simplifyEpsilon, 3.5)
         : simplifyEpsilon
   const simplified = simplifyPath(boundary, epsilon)
-  return simplified.length >= 3 ? simplified : boundary
+  const points = simplified.length >= 3 ? simplified : boundary
+  return {
+    points,
+    mask,
+    width: imageData.width,
+    height: imageData.height,
+  }
 }
 
 export function getMagicWandEdgeThreshold(colorTolerance: number): number {
